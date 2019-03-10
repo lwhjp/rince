@@ -1,6 +1,6 @@
 #lang turnstile/base
 
-(extends "expression.rkt" #:prefix base)
+(extends "expression.rkt" #:prefix base:)
 
 (require (for-syntax racket/list
                      racket/match
@@ -35,17 +35,13 @@
 (define-syntax-parameter return (make-invalid-use))
 
 (begin-for-syntax
-  ; TODO: function formals declarator
-  ; (can be used in decls and (function) - need help with f(void)
   (define-syntax-class declaration
     #:attributes ([specifier 1] [x 1] [τ 1] [v 1])
     (pattern
      ((~literal declare) ~!
       (specifier:id ...)
       (~or* [τ:type x:id (~optional v:expr)]
-            ; TODO: unspecified-args function type
-            [τ_ret:type (x:id [τ_arg:type (~optional arg:id)] ...) ; TODO: varargs etc
-             (~bind [τ (make-→ #'τ_ret #'([τ_arg (~? arg)] ... ))])])
+            [fn:function-decl (~bind [x #'fn.f] [τ #'fn.τ])])
       ...))))
 
 (begin-for-syntax
@@ -64,8 +60,9 @@
      [(and (not new-storage) (eq? 'extern old-storage)) old-storage]
      [else (raise-syntax-error #f "conflicting storage specifier" stx)])
    (cond
-     ; TODO: compatible function types (unspecified args)
      [(type=? new-type old-type) old-type]
+     [(and (→? new-type) (unspecified→? old-type) (type=? (→-ret new-type) (→-ret old-type))) new-type]
+     [(and (→? old-type) (unspecified→? new-type) (type=? (→-ret new-type) (→-ret old-type))) old-type]
      [else (raise-syntax-error #f "conflicting type" stx)])
    (cond
      [(bound-identifier=? new-object-id old-object-id) old-object-id]
@@ -104,11 +101,11 @@
                        (define specifiers (map syntax-e (attribute decl.specifier)))
                        (filter-map
                         (λ (x τ init-v)
-                          (define function? (→? τ))
+                          (define function? (function-type? τ))
                           (define old-info (bound-id-table-ref declared-vars x #f))
                           (define obj-id
                             (or (and old-info (declared-var-object-id old-info))
-                                (with-syntax ([x- (generate-temporary x)])
+                                (with-syntax ([x- (internal-definition-context-introduce def-ctx (generate-temporary x))])
                                   (syntax-local-bind-syntaxes (list #'x-) #f def-ctx)
                                   #'x-)))
                           (define info
@@ -131,15 +128,19 @@
                                 '() ; already declared
                                 (with-syntax ([x- obj-id]
                                               [x+ (syntax-local-identifier-as-binding x)])
+                                  (define renamer-target
+                                    (if function? #'x- #'(lvalue x-)))
                                   (define type-renamer
-                                    #`(make-variable-like-transformer (assign-type #'x- #'#,τ #:wrap? #f)))
+                                    #`(make-variable-like-transformer
+                                       (assign-type #'#,renamer-target #'#,τ #:wrap? #f)))
                                   (syntax-local-bind-syntaxes (list #'x+) type-renamer def-ctx)
                                   (list #`(define-syntax x+ #,type-renamer)))))
                           (define def
-                            (cond
-                              [(not init-v) #f]
-                              [function? #`(define #,obj-id #,init-v)]
-                              [else #`(define #,obj-id (make-variable (assignment-cast #,τ #,init-v)))]))
+                            (with-syntax ([x- obj-id])
+                              (cond
+                                [(not init-v) #f]
+                                [function? #`(define x- #,init-v)]
+                                [else #`(define x- (make-variable (assignment-cast #,τ #,init-v)))])))
                           #`(begin #,@renamer-defs #,@(cond [def => list] [else '()])))
                         (attribute decl.x)
                         (map (current-type-eval) (attribute decl.τ))
@@ -176,17 +177,30 @@
 
 (define-syntax/trace function
   (syntax-parser
-    ; TODO: varargs etc
-    [(_ (specifier:id ...) τ_ret:type
-        (f:id [τ_arg:type (~optional arg:id #:defaults ([arg (datum->syntax #'here (gensym))]))] ...)
+    [(_ (specifier:id ...) decl:function-decl
         ; TODO: old-style preamble
         ((~literal block)
          body ...))
      (define def-ctx (syntax-local-make-definition-context))
      (define stop-ids (list #'begin #'block #'declare #'goto #'return))
-     ; TODO: use formals declarator to get arg types and names
-     ; ( needed for f(void) )
-     ; - should be typed
+     (define arg-ids (map (λ (id) (generate-temporary (or id 'arg))) (attribute decl.arg)))
+     (define rest-arg (if (attribute decl.varargs?) #'rest #'()))
+     (define arg-renamers
+       (with-syntax
+           ([((arg- arg^ arg+ τ) ...)
+             (for/list ([arg- arg-ids]
+                        [arg+ (attribute decl.arg)]
+                        [τ (attribute decl.τ_arg)]
+                        #:when arg+)
+               (list arg- (generate-temporary arg+) (internal-definition-context-introduce def-ctx arg+) τ))])
+         (define renamers
+           #'(values (make-variable-like-transformer
+                      (assign-type #'(lvalue arg^) #'τ #:wrap? #f)) ...))
+         (syntax-local-bind-syntaxes (syntax->list #'(arg^ ...)) #f def-ctx)
+         (syntax-local-bind-syntaxes (syntax->list #'(arg+ ...)) renamers def-ctx)
+         #`(begin
+             (define-values (arg^ ...) (values (make-variable arg-) ...))
+             (define-syntaxes (arg+ ...) #,renamers))))
      (define expanded-body
        (let loop ([forms #'(body ...)]
                   [def-ctx def-ctx]
@@ -222,14 +236,15 @@
                        (if static?
                            (syntax-local-lift-expression init-expr)
                            (begin
-                             (with-syntax ([x- (generate-temporary id)])
+                             (with-syntax ([x- (internal-definition-context-introduce def-ctx (generate-temporary id))])
                                (syntax-local-bind-syntaxes (list #'x-) #f def-ctx)
                                #'x-))))
                      (with-syntax ([x- obj-id]
                                    [x+ (syntax-local-identifier-as-binding id)])
                        ; FIXME: this duplicates translation-unit
                        (define type-renamer
-                         #`(make-variable-like-transformer (assign-type #'x- #'#,τ #:wrap? #f)))
+                         #`(make-variable-like-transformer
+                            (assign-type #'(lvalue x-) #'#,τ #:wrap? #f)))
                        (syntax-local-bind-syntaxes (list #'x+) type-renamer def-ctx)
                        #`(begin
                            (define-syntax x+ #,type-renamer)
@@ -244,24 +259,27 @@
        (internal-definition-context-track
         def-ctx
         (quasisyntax/loc this-syntax
-          (lambda (arg ...)
+          (lambda (#,@arg-ids . #,rest-arg)
+            #,arg-renamers
             (let/ec return-cont
               (syntax-parameterize
-                  ([return (make-return #'return-cont #'τ_ret)])
+                  ([return (make-return #'return-cont #'decl.τ_ret)])
                 (label-scope
                  #,@expanded-body
                  'undefined-return)))))))
-     ; FIXME: don't include generated arg ids here
-     #`(declare (specifier ...) [#,(make-→ #'τ_ret #'([τ_arg arg] ...)) f #,λ-stx])]))
+     #`(declare (specifier ...) [decl.τ decl.f #,λ-stx])]))
 
 (define-for-syntax (make-return ec τ_ret)
-  (syntax-parser
-    [(_)
-     #:when (void? τ_ret)
-     #`(#,ec)]
-    [(_ v)
-     #:when (not (void? τ_ret))
-     #`(#,ec (assignment-cast #,τ_ret v))]))
+  (λ (stx)
+    (syntax-parse/typecheck stx
+      [(_) ≫
+       #:when (void? τ_ret)
+       --------
+       [≻ (#,ec)]]
+      [(_ v) ≫
+       #:when (not (void? τ_ret))
+       --------
+       [≻ (#,ec (assignment-cast #,τ_ret v))]])))
 
 ;; Tests
 

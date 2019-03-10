@@ -1,8 +1,8 @@
 #lang turnstile/base
 
-(extends "scope.rkt" #:prefix base)
+(extends "scope.rkt" #:prefix base:)
 
-(require (rename-in (prefix-in r: (only-in racket/base void)))
+(require (prefix-in r: (only-in racket/base void))
          racket/stxparam)
 
 (provide empty-statement break continue do for if while)

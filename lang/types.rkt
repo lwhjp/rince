@@ -5,6 +5,7 @@
 (require "rep.rkt")
 
 (provide
+ (for-syntax function-decl →-ret)
  (type-out void)
            _Bool
            |signed char| |unsigned char|
@@ -17,13 +18,15 @@
            __int32 __uint32
            __int64 __uint64
            float double |long double|
- (type-out const Pointer →)
+ (type-out const Pointer → unspecified→ args...)
  (for-syntax make-→
              sizeof/type
+             function-type?
              arithmetic-type?
              integer-type?
              integer-promote-type
              common-real-type)
+ ...
  #%datum
  assignment-cast
  cast)
@@ -67,14 +70,40 @@
 (define-type-constructor const #:arity = 1)
 
 (define-type-constructor → #:arity >= 1)
+(define-type-constructor unspecified→ #:arity = 1)
+(define-base-type args...)
+
+(begin-for-syntax
+  (define-splicing-syntax-class function-decl
+    #:attributes (f τ τ_ret [arg 1] [τ_arg 1] varargs?)
+    (pattern (~seq τ_ret:type (f:id)
+                   (~bind [τ #'(unspecified→ τ_ret)]
+                          [(arg 1) #f]
+                          [(τ_arg 1) #f]
+                          [varargs? #f])))
+    (pattern (~seq τ_ret:type (f:id [(~literal void)])
+                   (~bind [τ #'(→ τ_ret)]
+                          [(arg 1) '()]
+                          [(τ_arg 1) '()]
+                          [varargs? #f])))
+    (pattern (~seq τ_ret:type (f:id [τ_arg:type (~optional arg:id)] ...+)
+                   (~bind [τ #'(→ τ_arg ... τ_ret)]
+                          [varargs? #f])))
+    (pattern (~seq τ_ret:type (f:id [τ_arg:type (~optional arg:id)] ...+ (~literal ...))
+                   (~bind [τ #'(→ τ_arg ... args... τ_ret)]
+                          [varargs? #t])))))
 
 (define-for-syntax (make-→ τ_ret formals)
-  (define arg-types (stx-map stx-car formals))
-  (cond
-    [(and (eqv? 1 (length arg-types))
-          (type=? #'void (car arg-types)))
-     #`(→ #,τ_ret)]
-    [else #`(→ #,@arg-types #,τ_ret)]))
+  (syntax-parse #`(#,τ_ret #,@formals)
+    [(decl:function-decl) #'decl.τ]))
+
+(define-for-syntax (→-ret τ)
+  (syntax-parse τ
+    [(~→ _ ... ret) #'ret]
+    [(~unspecified→ ret) #'ret]))
+
+(define-for-syntax (function-type? τ)
+  (or (→? τ) (unspecified→? τ)))
 
 ; TODO: struct, union
 

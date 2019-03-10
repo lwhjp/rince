@@ -19,6 +19,7 @@
  object-ref
  set-lvalue!
  lvalue
+ unwrap-lvalue
  make-variable
  make-pointer
  pointer-dereference
@@ -208,10 +209,22 @@
   ([box?
     (define set-lvalue! set-box!)]))
 
-(define-typed-syntax (lvalue v) ≫
-  [⊢ v ≫ v- ⇒ τ]
-  --------
-  [⊢ (object-ref v-) ⇒ τ])
+(begin-for-syntax
+  (struct lvalue-wrapper (target)
+    #:property prop:procedure
+    (λ (this stx)
+      (syntax/loc stx target))))
+
+(define (lvalue v) (object-ref v))
+
+; Hack: lvalue expressions need to evaluate to the unboxed value, but we
+; still need to be able to get at the box for mutation and referencing.
+(define-syntax unwrap-lvalue
+  (syntax-parser
+    [(_ v)
+     (syntax-parse (local-expand #'v 'expression '())
+       [((~literal #%plain-app-) (~literal lvalue) lv) #'lv]
+       [_ (println this-syntax) (raise-syntax-error #f "not an lvalue" #f #'v)])]))
 
 (define make-variable box)
 

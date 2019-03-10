@@ -2,6 +2,8 @@
 
 (require (for-syntax racket/base)
          (for-template "syntax.rkt")
+         ; for-template doesn't seem to pick up #%app properly
+         (prefix-in c: "syntax.rkt")
          racket/match
          racket/string
          racket/stxparam
@@ -49,13 +51,13 @@
 ;; Expressions
 
 (define/match/wrap *expr
-  [(expr:ref src id) #`(lvalue #,(*id id))]
+  [(expr:ref src id) (*id id)]
   [(expr:int src value qualifiers) value] ; TODO: qualifiers
   [(expr:float src value qualifiers) values]
   [(expr:char src source wide?) (string-ref source 0)] ; TODO: multi-char constants
   [(expr:string src source wide?) source]
   ; TODO: compound, array-ref
-  [(expr:call src function arguments) #`(#%app #,(*expr function) #,@(map *expr arguments))]
+  [(expr:call src function arguments) #`(c:#%app #,(*expr function) #,@(map *expr arguments))]
   ; TODO: member, pointer-member
   [(expr:postfix src expr op) (let ([op (*id op)]) #`(#,(format-id op "post~a" op) #,(*expr expr)))]
   [(expr:prefix src op expr) (let ([op (*id op)]) #`(#,(format-id op "pre~a" op) #,(*expr expr)))]
@@ -135,11 +137,13 @@
 (define/match/wrap *decl:formal
   [(decl:formal src storage-class type declarator)
    ; TODO: storage class
-   (let* ([decl (if (declarator-context? declarator)
-                    (apply-declarator-context declarator type)
-                    declarator)]
-          [t (if decl (decl:declarator-type decl) type)]
-          [id (if decl (decl:declarator-id decl) #f)])
+   (let ([t (if (declarator-context? declarator)
+                (decl:declarator-type
+                 (apply-declarator-context declarator type))
+                (apply-type-context declarator type))]
+         [id (if (decl:declarator? declarator)
+                 (decl:declarator-id declarator)
+                 #f)])
      #`[#,(*type t) #,@(if id (list (*id id)) '())])])
 
 ;; Initializers

@@ -2,7 +2,7 @@
 
 ;; C operators
 
-(extends "types.rkt" #:prefix base)
+(extends "types.rkt" #:prefix base:)
 
 (require "rep.rkt")
 
@@ -37,37 +37,32 @@
 
 ;; Postfix operators
 
-; FIXME: we should really be using v- in the expansion, but that
-; gives us an ambiguous binding error (probably the temporary created
-; in scope.rkt has the wrong scopes)
-; (Also for other operators below)
-(define-typed-syntax (post++ ((~literal lvalue) v)) ≫
+(define-typed-syntax (post++ v) ≫
   [⊢ v ≫ v- ⇒ τ]
-  #:with lv- #'lv
-  #:with lv+ (assign-type #'lv- #'τ)
+  #:with v^ (generate-temporary #'v)
+  #:with v+ (assign-type #'(lvalue v^) #'τ #:wrap? #f)
   --------
-  [⊢ (let ([lv- v])
+  [⊢ (let ([v^ (unwrap-lvalue v-)])
        (begin0
-         (object-ref lv-)
-         (set-lvalue! lv- (+ (lvalue lv+) 1)))) ⇒ τ])
+         (lvalue v^)
+         (set-lvalue! v^ (assignment-cast τ (+ v+ (cast |signed int| 1))))))
+     ⇒ τ])
 
 ;; Unary operators
 
-(define-typed-syntax (pre++ ((~literal lvalue) v)) ≫
+(define-typed-syntax (pre++ v) ≫
   --------
-  [≻ (+= (lvalue v) 1)])
+  [≻ (+= v (cast |signed int| 1))])
 
-(define-typed-syntax (unary& ((~literal lvalue) v)) ≫
+(define-typed-syntax (unary& v) ≫
   [⊢ v ≫ v- ⇒ τ]
   --------
-  [⊢ (make-pointer v) ⇒ (Pointer τ)])
+  [⊢ (make-pointer (unwrap-lvalue v-)) ⇒ (Pointer τ)])
 
 (define-typed-syntax (unary* v) ≫
   [⊢ v ≫ v- ⇒ (~Pointer τ)]
-  #:with expr- #'(pointer-dereference v)
-  #:with expr+ (assign-type #'expr- #'τ)
   --------
-  [≻ (lvalue expr+)])
+  [⊢ (lvalue (pointer-dereference v-)) ⇒ τ])
 
 #|
 (define-typed-syntax (unary+ v) ≫
@@ -103,7 +98,7 @@
     [(and (arithmetic-type? #'τ_x) (arithmetic-type? #'τ_y))
      (let* ([τ_out (common-real-type #'τ_x #'τ_y)]
             [τ_prim (if (Constrained-Integer? τ_out) #'Integer τ_out)])
-       #`(cast #,τ_out #,(assign-type #'(+- (cast #,τ_out x) (cast #,τ_out y)) τ_prim)))]
+       #`(cast #,τ_out #,(assign-type #`(+- (cast #,τ_out x) (cast #,τ_out y)) τ_prim)))]
     [(and (Pointer? #'τ_x) (integer-type? #'τ_y))
      (assign-type #'(pointer-inc x- y-) #'τ_x)]
     [(and (Pointer? #'τ_y) (integer-type? #'τ_x))
@@ -120,7 +115,7 @@
     [(and (arithmetic-type? #'τ_x) (arithmetic-type? #'τ_y))
      (let* ([τ_out (common-real-type #'τ_x #'τ_y)]
             [τ_prim (if (Constrained-Integer? τ_out) #'Integer τ_out)])
-       #`(cast #,τ_out #,(assign-type #'(-- (cast #,τ_out x) (cast #,τ_out y)) τ_prim)))]
+       #`(cast #,τ_out #,(assign-type #`(-- (cast #,τ_out x) (cast #,τ_out y)) τ_prim)))]
     [(and (Pointer? #'τ_x) (integer-type? #'τ_y))
      (assign-type #'(pointer-inc x- (-- y-)) #'τ_x)]
     [(and (Pointer? #'τ_x) (type=? #'τ_x #'τ_y))
@@ -133,26 +128,26 @@
 
 ;; Assignment
 
-(define-typed-syntax (= ((~literal lvalue) x) y) ≫
+(define-typed-syntax (= x y) ≫
   [⊢ x ≫ x- ⇒ τ]
-  #:with expr- #'(let ([lv x])
-                   (set-lvalue! lv (assignment-cast τ y))
-                   lv)
-  #:with expr+ (assign-type #'expr- #'τ)
+  #:with x^ (generate-temporary #'x)
+  #:with x+ (assign-type #'(lvalue x^) #'τ #:wrap? #f)
   --------
-  [≻ (lvalue expr+)])
+  [⊢ (lvalue
+      (let ([x^ (unwrap-lvalue x-)])
+        (set-lvalue! x^ (assignment-cast τ y))
+        x^)) ⇒ τ])
 
 (define-syntax-rule (define-assignment-operator id op)
-  (define-typed-syntax (id ((~literal lvalue) x) y) ≫
+  (define-typed-syntax (id x y) ≫
     [⊢ x ≫ x- ⇒ τ]
-    #:with lv- #'lv
-    #:with lv+ (assign-type #'lv- #'τ)
-    #:with expr- #'(let ([lv- x])
-                     (set-lvalue! lv- (assignment-cast τ (op (lvalue lv+) y)))
-                     lv-)
-    #:with expr+ (assign-type #'expr- #'τ)
+    #:with x^ (generate-temporary #'x)
+    #:with x+ (assign-type #'(lvalue x^) #'τ #:wrap? #f)
     --------
-    [≻ (lvalue expr+)]))
+    [⊢ (lvalue
+        (let ([x^ (unwrap-lvalue x-)])
+          (set-lvalue! x^ (assignment-cast τ (op x+ y)))
+          x^)) ⇒ τ]))
 
 (define-assignment-operator += +)
          
