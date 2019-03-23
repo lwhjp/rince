@@ -13,7 +13,12 @@
              Constrained-Integer-bits+signed?
              Constrained-Integer⊂?
              sizeof/type)
- (type-out Integer Single-Float Double-Float Array Pointer)
+ (type-out Integer
+           Single-Float
+           Double-Float
+           Array
+           Struct
+           Pointer)
  define-integer-type
  define-integer-types
  object-ref
@@ -21,11 +26,16 @@
  lvalue
  unwrap-lvalue
  make-variable
+ define-struct-type
+ struct-ref
  make-pointer
  pointer-dereference
  pointer-inc
  pointer-diff
  cast
+ initializer
+ static-initializer
+ unspecified-initializer
  (rename-out
   [#%datum+ #%datum]))
 
@@ -241,7 +251,55 @@
    (λ (p) (vector-ref (array-data (pointer-target p)) (pointer-index p)))
    (λ (p v) (vector-set! (array-data (pointer-target p)) (pointer-index p) v))))
 
-; Structs, Unions
+; Structs
+
+; This needs a bit of extra logic elsewhere to handle
+; anonymous struct types and tag declarations.
+
+(define-for-syntax introduce-struct-info (make-syntax-introducer))
+
+(define-parameterized-type (Struct tag))
+
+(define-syntax define-struct-type
+  (syntax-parser
+    [(_ name:id ([τ:type field:id] ...))
+     ; TODO: make- helper
+     (with-syntax ([info (introduce-struct-info #'name)])
+       #'(begin
+           (define-syntax info #'((field . τ) ...))))]))
+
+(define-for-syntax (struct-tag->info tag)
+  (stx-map
+   syntax-e
+   (syntax-local-value
+    (introduce-struct-info tag)
+    (λ () (error "not a struct type:" tag)))))
+
+; FIXME: s.x is only an lvalue if s is also.
+(define-typed-syntax (struct-ref s field) ≫
+  [⊢ s ≫ s- ⇒ (~Struct tag)]
+  #:with (i τ)
+  (let ([info (struct-tag->info #'tag)]
+        [id (syntax-e #'field)])
+    (let loop ([fields info]
+               [i 0])
+      (cond
+        [(null? fields) (raise-syntax-error #f "invalid member specifier" this-syntax #'field)]
+        [(eq? id (syntax-e (caar fields))) (list i (cdar fields))]
+        [else (loop (cdr fields) (add1 i))])))
+  --------
+  [⊢ (lvalue (struct-reference s- (quote i))) ⇒ τ])
+
+(struct struct-reference
+  (s i)
+  #:methods gen:object
+  ((define (object-ref ref)
+     (vector-ref (struct-reference-s ref) (struct-reference-i ref))))
+  #:methods gen:lvalue
+  ((define (set-lvalue! ref v)
+     (vector-set! (struct-reference-s ref) (struct-reference-i ref) v))))
+
+; Unions
 
 ; Pointers
 
@@ -280,3 +338,22 @@
 
 (define (pointer-diff p q)
   (- (pointer-index p) (pointer-index q)))
+
+; Initializers
+
+(define-syntax initializer
+  (syntax-parser
+    [(_ τ v)
+     #'(cast τ v)]))
+
+(define-syntax unspecified-initializer
+  (syntax-parser
+    [(_ (~Array dims)) (error 'TODO)]
+    [(_ (~Struct tag))
+     (with-syntax ([(τ_e ...) (map cdr (struct-tag->info #'tag))])
+       #'(vector (unspecified-initializer τ_e) ...))]
+    [(_ τ) #''unspecified]))
+
+(define-syntax static-initializer
+  (syntax-parser
+    [(_ τ) #'(cast τ (#%datum+ . 0))]))

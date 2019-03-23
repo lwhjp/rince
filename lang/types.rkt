@@ -18,7 +18,12 @@
            __int32 __uint32
            __int64 __uint64
            float double |long double|
- (type-out const Pointer → unspecified→ args...)
+ (type-out const
+           Struct
+           Pointer
+           →
+           unspecified→
+           args...)
  (for-syntax make-→
              sizeof/type
              function-type?
@@ -29,7 +34,8 @@
  ...
  #%datum
  assignment-cast
- cast)
+ cast
+ define-struct-type)
 
 ;; Probably needs some rethinking re variance etc.
 

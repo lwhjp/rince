@@ -32,12 +32,12 @@
 
 (define-syntax-rule
   (define/match/wrap id
-    [(struct: src member ...) stx-expr] ...)
+    [(struct: src member ...) body ... stx-expr] ...)
   (define id
     (let ([id (λ (node)
                 (syntax-parameterize ([this-node (make-rename-transformer #'node)])
                   (match node
-                    [(struct: src member ...) (src->syntax src stx-expr)] ...)))])
+                    [(struct: src member ...) body ... (src->syntax src stx-expr)] ...)))])
       (when DEBUG (trace id))
       id)))
 
@@ -58,7 +58,8 @@
   [(expr:string src source wide?) source]
   ; TODO: compound, array-ref
   [(expr:call src function arguments) #`(c:#%app #,(*expr function) #,@(map *expr arguments))]
-  ; TODO: member, pointer-member
+  [(expr:member src expr label) #`(|.| #,(*expr expr) #,(*id label))]
+  [(expr:pointer-member src expr label) #`(-> #,(*expr expr) #,(*id label))]
   [(expr:postfix src expr op) (let ([op (*id op)]) #`(#,(format-id op "post~a" op) #,(*expr expr)))]
   [(expr:prefix src op expr) (let ([op (*id op)]) #`(#,(format-id op "pre~a" op) #,(*expr expr)))]
   [(expr:cast src type expr) #`(cast #,(*type type) #,(*expr expr))]
@@ -97,23 +98,39 @@
 (define/match/wrap *decl
   ; TODO: typedef
   [(decl:vars src storage-class type declarators)
-   #`(declare #,(if storage-class
-                    (list (*id storage-class))
-                    '())
-       #,@(for/list ([ctx (in-list declarators)])
-            (define dcl (apply-declarator-context ctx type))
-            (define dcl-type (decl:declarator-type dcl))
-            (define init
-              (cond
-                [(decl:declarator-initializer dcl) => *init]
-                [else #f]))
-            (with-syntax ([x (*id (decl:declarator-id dcl))])
-              (cond
-                [(type:function? dcl-type)
-                 #`[#,(*type (type:function-return dcl-type))
-                    (x #,@(map *decl:formal (type:function-formals dcl-type)))]]
-                [init #`[#,(*type dcl-type) x #,init]]
-                [else #`[#,(*type dcl-type) x]]))))]
+   ; TODO: struct declarations can appear in other places too; we'll
+   ; probably need to tweak (declare ...) to handle that fully.
+   ; TODO: similarly for anonymous structs
+   (define struct-defs
+     (match type
+       [(type:struct _ tag (? list? fields))
+        (list
+         #`(define-struct-type #,(*id tag)
+             (#,@(map *decl:member fields))))]
+       [_ '()]))
+   (define declarator-stxs
+     (for/list ([ctx (in-list declarators)])
+       (define dcl (apply-declarator-context ctx type))
+       (define dcl-type (decl:declarator-type dcl))
+       (define init
+         (cond
+           [(decl:declarator-initializer dcl) => *init]
+           [else #f]))
+       (with-syntax ([x (*id (decl:declarator-id dcl))])
+         (cond
+           [(type:function? dcl-type)
+            #`[#,(*type (type:function-return dcl-type))
+               (x #,@(map *decl:formal (type:function-formals dcl-type)))]]
+           [init #`[#,(*type dcl-type) x #,init]]
+           [else #`[#,(*type dcl-type) x]]))))
+   (with-syntax ([(struct-def ...) struct-defs]
+                 [(storage-class ...) (if storage-class
+                                          (list (*id storage-class))
+                                          '())]
+                 [(declarator ...) declarator-stxs])
+     #'(begin
+         struct-def ...
+         (declare (storage-class ...) declarator ...)))]
   [(decl:function src storage-class inline? return-type declarator preamble body)
    ; TODO: preamble
    (let ([type (decl:declarator-type
@@ -146,6 +163,13 @@
                  #f)])
      #`[#,(*type t) #,@(if id (list (*id id)) '())])])
 
+(define/match/wrap *decl:member
+  ; TODO: fully implement this
+  [(decl:member src type declarators)
+   (match declarators
+     [(list (decl:member-declarator _ id #f #f #f))
+      #`[#,(*type type) #,(*id id)]])])
+
 ;; Initializers
 
 (define/match/wrap *init
@@ -165,7 +189,9 @@
      [(list spec ... (or 'char 'int 'double '_Complex)) (string->symbol (string-join (map symbol->string name)))]
      [(? list?) (string->symbol (string-join (append (map symbol->string name) "int")))]
      [else name])]
-  ; TODO: ref, struct, union, enum, array
+  ; TODO: ref
+  [(type:struct src tag #f) #| TODO: inline struct definitions |# #`(Struct #,(*id tag))]
+  ; TODO: union, enum, array
   [(type:pointer src base qualifiers) #| TODO: qualifiers |# #`(Pointer #,(*type base))]
   [(type:function src return formals)
    ; TODO: formal storage classes

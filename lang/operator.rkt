@@ -11,7 +11,7 @@
  pointer-inc
  pointer-diff
  sizeof
- post++ pre++
+ |.| -> post++ pre++
  + - * &
  = +=
  |,|)
@@ -36,6 +36,13 @@
   + - * &)
 
 ;; Postfix operators
+
+(define-typed-syntax (|.| s:expr member:id) ≫
+  --------
+  [≻ (struct-ref s member)])
+
+; TODO: do we need to support &(((struct foo *) 0)->bar) etc?
+(define-syntax-rule (-> ps member) (|.| (* ps) member))
 
 (define-typed-syntax (post++ v) ≫
   [⊢ v ≫ v- ⇒ τ]
