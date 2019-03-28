@@ -8,8 +8,7 @@ This is an (in-progress) implementation of C semantics for Racket, comprising
 a runtime library and C->Racket compiler to allow running C programs on top
 of Racket (no FFI!).
 
-There is no `#lang` for now - but it should be possible to implement with
-a few special forms to handle linking.
+There is a simple `#lang rince/c` for standalone programs.
 
 Rince is not a static analyzer, but it could serve as a tool
 to instrument C programs at runtime, in a similar manner to valgrind.

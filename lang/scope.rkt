@@ -12,7 +12,7 @@
          "goto.rkt"
          "rep.rkt")
 
-(provide block declare function goto return translation-unit)
+(provide begin block declare function goto return translation-unit)
 
 (define-for-syntax DEBUG #f)
 
