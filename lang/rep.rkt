@@ -5,6 +5,7 @@
 (require (for-meta 2 racket/base)
          racket/generic
          racket/math
+         "core.rkt"
          "parameterized-type.rkt")
 
 (provide
@@ -18,7 +19,10 @@
            Double-Float
            Array
            Struct
-           Pointer)
+           Pointer
+           →
+           unspecified→
+           args...)
  define-integer-type
  define-integer-types
  object-ref
@@ -36,25 +40,11 @@
  initializer
  static-initializer
  unspecified-initializer
+ #%app
  (rename-out
-  [#%datum+ #%datum]))
+  [#%datum++ #%datum]))
 
-(define-base-type Integer)
-(define-base-type Single-Float)
-(define-base-type Double-Float)
-
-(define-typed-syntax #%datum+
-  [(_ . n:integer) ≫
-   --------
-   [⊢ (quote n) ⇒ Integer]]
-  [(_ . r) ≫
-   #:when (single-flonum? (syntax-e #'r))
-   --------
-   [⊢ (quote r) ⇒ Single-Float]]
-  [(_ . r) ≫
-   #:when (flonum? (syntax-e #'r))
-   --------
-   [⊢ (quote r) ⇒ Double-Float]]
+(define-typed-syntax #%datum++
   [(_ . s:string) ≫
    #:do ((define data
            (list->vector
@@ -66,7 +56,7 @@
    [⊢ (array #,data 1) ⇒ (Array '(#,(vector-length data)))]]
   [(_ . x) ≫
    --------
-   [#:error (type-error #:src #'x #:msg "Unsupported literal: ~v" #'x)]])
+   [≻ (#%datum+ . x)]])
 
 ; TODO: use parameterized type for constrained-integer
 

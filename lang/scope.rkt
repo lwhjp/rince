@@ -9,6 +9,7 @@
                      syntax/intdef)
          racket/stxparam
          "../link.rkt"
+         "core.rkt"
          "goto.rkt"
          "rep.rkt")
 

@@ -5,7 +5,8 @@
 (extends "operator.rkt" #:prefix base:)
 
 (require (for-syntax racket/list
-                     racket/match))
+                     racket/match)
+         "core.rkt")
 
 (provide
  #%app

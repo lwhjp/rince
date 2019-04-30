@@ -20,10 +20,7 @@
            float double |long double|
  (type-out const
            Struct
-           Pointer
-           →
-           unspecified→
-           args...)
+           Pointer)
  (for-syntax make-→
              sizeof/type
              function-type?
@@ -74,10 +71,6 @@
 (define-for-syntax |long double?| Double-Float?)
 
 (define-type-constructor const #:arity = 1)
-
-(define-type-constructor → #:arity >= 1)
-(define-type-constructor unspecified→ #:arity = 1)
-(define-base-type args...)
 
 (begin-for-syntax
   (define-splicing-syntax-class function-decl
