@@ -1,4 +1,5 @@
 #lang info
-(define deps '("base"
+(define deps '("rackunit-lib"
+               "base"
                "c-utils"
                "turnstile-lib"))
