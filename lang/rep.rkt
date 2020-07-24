@@ -146,7 +146,7 @@
 
 (define-syntax (pointer-dereference stx)
   (syntax-case stx ()
-    [(_ e) #'(let ([p e]) (lvalue-reference . ((pointer-resolve-proc p) (pointer-offset p))))]))
+    [(_ e) #'(lvalue-reference . (let ([p e]) ((pointer-resolve-proc p) (pointer-offset p))))]))
 
 (define (pointer-inc p n)
   (pointer (pointer-resolve-proc p) (+ (pointer-offset p) n)))
