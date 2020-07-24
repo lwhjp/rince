@@ -1,6 +1,6 @@
 #lang turnstile/base
 
-(extends "scope.rkt" #:prefix base:)
+(extends "scope.rkt")
 
 (require (prefix-in r: (only-in racket/base void))
          racket/stxparam)
@@ -70,7 +70,7 @@
    [≻ (for ((empty-statement) pred step) body)]]
   [(_ (init () step) body) ≫
    --------
-   [≻ (for (init (base:#%datum . 1) step) body)]]
+   [≻ (for (init 1 step) body)]]
   [(_ (init pred ()) body) ≫
    --------
    [≻ (for (init pred (empty-statement)) body)]]

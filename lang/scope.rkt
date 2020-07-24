@@ -1,6 +1,6 @@
 #lang turnstile/base
 
-(extends "expression.rkt" #:prefix base:)
+(extends "expression.rkt")
 
 (require (for-syntax racket/list
                      racket/match
@@ -9,7 +9,7 @@
                      syntax/intdef)
          racket/stxparam
          "../link.rkt"
-         "core.rkt"
+         "expression.rkt" ; we really do want #%datum
          "goto.rkt"
          "rep.rkt")
 
@@ -62,8 +62,14 @@
      [else (raise-syntax-error #f "conflicting storage specifier" stx)])
    (cond
      [(type=? new-type old-type) old-type]
-     [(and (→? new-type) (unspecified→? old-type) (type=? (→-ret new-type) (→-ret old-type))) new-type]
-     [(and (→? old-type) (unspecified→? new-type) (type=? (→-ret new-type) (→-ret old-type))) old-type]
+     [(and (→? new-type)
+           (unspecified→? old-type)
+           (type=? (function-return-type new-type) (function-return-type old-type)))
+      new-type]
+     [(and (→? old-type)
+           (unspecified→? new-type)
+           (type=? (function-return-type new-type) (function-return-type old-type)))
+      old-type]
      [else (raise-syntax-error #f "conflicting type" stx)])
    (cond
      [(bound-identifier=? new-object-id old-object-id) old-object-id]
@@ -123,10 +129,10 @@
                              (with-syntax ([x- obj-id]
                                            [x+ (syntax-local-identifier-as-binding x)])
                                (define renamer-target
-                                 (if function? #'x- #'(lvalue x-)))
+                                 (if function? #'x- #'(variable-reference . x-)))
                                (define type-renamer
                                  #`(make-variable-like-transformer
-                                    (assign-type #'#,renamer-target #'#,τ #:wrap? #f)))
+                                    (assign-type #'#,renamer-target #'#,τ)))
                                (syntax-local-bind-syntaxes (list #'x+) type-renamer def-ctx)
                                (list #`(define-syntax x+ #,type-renamer)))))
                        (define def
@@ -134,7 +140,7 @@
                            (cond
                              [(not init-v) #f]
                              [function? #`(define x- #,init-v)]
-                             [else #`(define x- (make-variable (assignment-cast #,τ #,init-v)))])))
+                             [else #`(define x- (#%plain-app- make-variable (cast #,τ #,init-v)))])))
                        #`(begin #,@renamer-defs #,@(cond [def => list] [else '()])))
                      (attribute decl.x)
                      (map (current-type-eval) (attribute decl.τ))
@@ -153,7 +159,7 @@
           id
           (struct-copy declared-var info [defined? #t]))
          #`(define #,(declared-var-object-id info)
-             (make-variable (assignment-cast #,(declared-var-type info) 0)))))
+             (#%plain-app- make-variable (cast #,(declared-var-type info) 0)))))
      (define extern-ids
        (filter
         values
@@ -191,11 +197,11 @@
                (list arg- (generate-temporary arg+) (internal-definition-context-introduce def-ctx arg+) τ))])
          (define renamers
            #'(values (make-variable-like-transformer
-                      (assign-type #'(lvalue arg^) #'τ #:wrap? #f)) ...))
+                      (assign-type #'(variable-reference . arg^) #'τ)) ...))
          (syntax-local-bind-syntaxes (syntax->list #'(arg^ ...)) #f def-ctx)
          (syntax-local-bind-syntaxes (syntax->list #'(arg+ ...)) renamers def-ctx)
          #`(begin
-             (define-values (arg^ ...) (values (make-variable arg-) ...))
+             (define-values (arg^ ...) (#%plain-app- values (#%plain-app- make-variable arg-) ...))
              (define-syntaxes (arg+ ...) #,renamers))))
      (define expanded-body
        (let loop ([forms #'(body ...)]
@@ -228,7 +234,8 @@
                               [τ (in-list (map (current-type-eval) (attribute decl.τ)))]
                               [v (in-list (attribute decl.v))])
                      (define init-expr
-                       #`(make-variable
+                       #`(#%plain-app-
+                          make-variable
                           #,(cond
                               [v #`(initializer #,τ #,v)]
                               [static? #`(static-initializer #,τ)]
@@ -245,7 +252,7 @@
                        ; FIXME: this duplicates translation-unit
                        (define type-renamer
                          #`(make-variable-like-transformer
-                            (assign-type #'(lvalue x-) #'#,τ #:wrap? #f)))
+                            (assign-type #'(variable-reference . x-) #'#,τ)))
                        (syntax-local-bind-syntaxes (list #'x+) type-renamer def-ctx)
                        #`(begin
                            (define-syntax x+ #,type-renamer)
@@ -276,51 +283,51 @@
       [(_) ≫
        #:when (void? τ_ret)
        --------
-       [≻ (#,ec)]]
+       [≻ (#%plain-app #,ec)]]
       [(_ v) ≫
        #:when (not (void? τ_ret))
        --------
-       [≻ (#,ec (assignment-cast #,τ_ret v))]])))
+       [≻ (#%plain-app #,ec (cast #,τ_ret v))]])))
 
 ;; Tests
 
 (module+ test
   (translation-unit
-   (declare () [|signed int| x 10])
-   (declare () [|signed int| y x]))
+   (declare () [int x 10])
+   (declare () [int y x]))
 
   (translation-unit
-   (declare (extern) [|signed int| x])
-   (declare () [|signed int| y x]))
+   (declare (extern) [int x])
+   (declare () [int y x]))
 
   (translation-unit
-   (declare () [|signed int| x 10])
-   (function () |signed int| (main [void])
+   (declare () [int x 10])
+   (function () int (main [void])
      (block
-      (declare () [|signed int| y x])
+      (declare () [int y x])
       (return y))))
 
   (translation-unit
-   (function () |signed int| (main [void])
+   (function () int (main [void])
      (block
-      (declare (static) [|signed int| x 10])
+      (declare (static) [int x 10])
       (return x))))
 
   ; TODO: split this into separate test cases; check for error
   (translation-unit
-   (declare () [|signed int| i1 1])
-   (declare (static) [|signed int| i2 2])
-   (declare (extern) [|signed int| i3 3])
-   (declare () [|signed int| i4])
-   (declare (static) [|signed int| i5])
-   (declare () [|signed int| i1])
-   ;(declare () [|signed int| i2])
-   (declare () [|signed int| i3])
-   (declare () [|signed int| i4])
-   ;(declare () [|signed int| i5])
-   (declare (extern) [|signed int| i1])
-   (declare (extern) [|signed int| i2])
-   (declare (extern) [|signed int| i3])
-   (declare (extern) [|signed int| i4])
-   (declare (extern) [|signed int| i5]))
+   (declare () [int i1 1])
+   (declare (static) [int i2 2])
+   (declare (extern) [int i3 3])
+   (declare () [int i4])
+   (declare (static) [int i5])
+   (declare () [int i1])
+   ;(declare () [int i2])
+   (declare () [int i3])
+   (declare () [int i4])
+   ;(declare () [int i5])
+   (declare (extern) [int i1])
+   (declare (extern) [int i2])
+   (declare (extern) [int i3])
+   (declare (extern) [int i4])
+   (declare (extern) [int i5]))
   )

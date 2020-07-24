@@ -53,7 +53,7 @@
 (define/match/wrap *expr
   [(expr:ref src id) (*id id)]
   [(expr:int src value qualifiers) value] ; TODO: qualifiers
-  [(expr:float src value qualifiers) values]
+  [(expr:float src value qualifiers) value]
   [(expr:char src source wide?) (string-ref source 0)] ; TODO: multi-char constants
   [(expr:string src source wide?) source]
   ; TODO: compound, array-ref
@@ -183,8 +183,8 @@
 (define/match/wrap *type
   [(type:primitive src name)
    (match name
-     [(or 'char 'short 'int 'long) (string->symbol (format "signed ~a" name))]
-     ['signed '|signed int|]
+     [(or 'char 'short 'int 'long) name]
+     ['signed 'int]
      ['unsigned '|unsigned int|]
      [(list spec ... (or 'char 'int 'double '_Complex)) (string->symbol (string-join (map symbol->string name)))]
      [(? list?) (string->symbol (string-join (append (map symbol->string name) "int")))]
