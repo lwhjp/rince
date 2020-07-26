@@ -140,15 +140,12 @@
      #`(function #,(map *id (filter values (list storage-class inline?)))
          #,(*type return-type)
          (#,(*id (decl:declarator-id declarator))
-          #,@(match (type:function-formals type)
-               ['() (error "TODO: unspecified formals")]
-               [(list formals ...)
-                (map (λ (formal)
-                       ; formal or ellipsis
-                       (if (decl:formal? formal)
-                           (*decl:formal formal)
-                           (*id formal)))
-                     formals)]))
+          #,@(map (λ (formal)
+                    ; formal or ellipsis
+                    (if (decl:formal? formal)
+                        (*decl:formal formal)
+                        (*id formal)))
+                  (type:function-formals type)))
          #,(*stmt body)))])
 
 (define/match/wrap *decl:formal
@@ -195,8 +192,6 @@
   [(type:pointer src base qualifiers) #| TODO: qualifiers |# #`(Pointer #,(*type base))]
   [(type:function src return formals)
    ; TODO: formal storage classes
-   (let ([formal-decls (match formals
-                        ['() (error "TODO: unspecified formals")]
-                        [(list formals ...) (map *decl:formal formals)])])
+   (let ([formal-decls (map *decl:formal formals)])
      (make-→ (*type return) formal-decls))]
   [(type:qualified src type qualifiers) #| TODO |# (*type type)])

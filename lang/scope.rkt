@@ -185,24 +185,30 @@
          body ...))
      (define def-ctx (syntax-local-make-definition-context))
      (define stop-ids (list #'begin #'block #'declare #'goto #'return))
-     (define arg-ids (map (λ (id) (generate-temporary (or id 'arg))) (attribute decl.arg)))
-     (define rest-arg (if (attribute decl.varargs?) #'rest #'()))
-     (define arg-renamers
-       (with-syntax
-           ([((arg- arg^ arg+ τ) ...)
-             (for/list ([arg- arg-ids]
-                        [arg+ (attribute decl.arg)]
-                        [τ (attribute decl.τ_arg)]
-                        #:when arg+)
-               (list arg- (generate-temporary arg+) (internal-definition-context-introduce def-ctx arg+) τ))])
-         (define renamers
-           #'(values (make-variable-like-transformer
-                      (assign-type #'(variable-reference . arg^) #'τ)) ...))
-         (syntax-local-bind-syntaxes (syntax->list #'(arg^ ...)) #f def-ctx)
-         (syntax-local-bind-syntaxes (syntax->list #'(arg+ ...)) renamers def-ctx)
-         #`(begin
-             (define-values (arg^ ...) (#%plain-app- values (#%plain-app- make-variable arg-) ...))
-             (define-syntaxes (arg+ ...) #,renamers))))
+     (define-values (arg-spec arg-renamers)
+       (cond
+         [(attribute decl.arg)
+          => (λ (arg-decls)
+               (define arg-ids (map (λ (id) (generate-temporary (or id 'arg))) arg-decls))
+               (define rest-arg (if (attribute decl.varargs?) #'rest #'()))
+               (define arg-renamers
+                 (with-syntax
+                     ([((arg- arg^ arg+ τ) ...)
+                       (for/list ([arg- arg-ids]
+                                  [arg+ (attribute decl.arg)]
+                                  [τ (attribute decl.τ_arg)]
+                                  #:when arg+)
+                         (list arg- (generate-temporary arg+) (internal-definition-context-introduce def-ctx arg+) τ))])
+                   (define renamers
+                     #'(values (make-variable-like-transformer
+                                (assign-type #'(variable-reference . arg^) #'τ)) ...))
+                   (syntax-local-bind-syntaxes (syntax->list #'(arg^ ...)) #f def-ctx)
+                   (syntax-local-bind-syntaxes (syntax->list #'(arg+ ...)) renamers def-ctx)
+                   #`(begin
+                       (define-values (arg^ ...) (#%plain-app- values (#%plain-app- make-variable arg-) ...))
+                       (define-syntaxes (arg+ ...) #,renamers))))
+               (values #`(#,@arg-ids . #,rest-arg) arg-renamers))]
+         [else (values #'unspecified #'(begin))]))
      (define expanded-body
        (let loop ([forms #'(body ...)]
                   [def-ctx def-ctx]
@@ -267,7 +273,7 @@
        (internal-definition-context-track
         def-ctx
         (quasisyntax/loc this-syntax
-          (lambda (#,@arg-ids . #,rest-arg)
+          (lambda #,arg-spec
             #,arg-renamers
             (let/ec return-cont
               (syntax-parameterize
