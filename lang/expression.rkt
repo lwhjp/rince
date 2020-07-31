@@ -12,10 +12,11 @@
 (provide
  #%app
  |.| post++
- pre++ sizeof cast
- + - * &
- = +=
- |,|
+ pre++ ~ ! sizeof cast
+ * / % + -  << >> & ^ \|
+ < > <= >= == !=
+ = *= /= %= += -= <<= >>= &= ^= \|=
+ && \|\| ?: |,|
  ; FIXME: these should not be valid C names
  initializer
  static-initializer
@@ -68,7 +69,7 @@
     [(~unspecified→ τ_ret)
      (cons #'τ_ret (syntax->list #'(arg ...)))])
   --------
-  [⊢ (#%plain-app- f- arg^ ...) ⇒ τ_ret])
+  [⊢ (#%app- f- arg^ ...) ⇒ τ_ret])
 
 (define-syntax-rule (|.| s member) (struct-reference s member))
 
@@ -98,19 +99,32 @@
   --------
   [⊢ (pointer-dereference v-) ⇒ τ])
 
-#|
 (define-typed-syntax (unary+ v) ≫
   [⊢ v ≫ v- ⇒ τ_v]
-  #:with τ^ (integer-promote-type #'τ_v)
+  #:when (arithmetic-type? #'τ_v)
+  #:with τ^ (integer-promote #'τ_v)
   --------
   [≻ (cast τ^ v)])
 
 (define-typed-syntax (unary- v) ≫
   [⊢ v ≫ v- ⇒ τ_v]
-  #:with τ^ (integer-promote-type #'τ_v)
+  #:when (arithmetic-type? #'τ_v)
+  #:with τ^ (integer-promote #'τ_v)
   --------
-  [≻ (cast τ^ (- (cast τ^ v)))])
-|#
+  [⊢ (#%app- -- (cast τ^ v)) ⇒ τ^])
+
+(define-typed-syntax (~ v) ≫
+  [⊢ v ≫ v- ⇒ τ_v]
+  #:when (integer-type? #'τ_v)
+  #:with τ^ (integer-promote #'τ_v)
+  --------
+  [⊢ (#%app- bitwise-not- (cast τ^ v)) ⇒ τ^])
+
+(define-typed-syntax (! v) ≫
+  [⊢ v ≫ v- ⇒ τ_v]
+  #:when (scalar-type? #'τ_v)
+  --------
+  [≻ (== 0 v)])
 
 (define-typed-syntax sizeof
   [(_ τ:type) ≫
@@ -133,6 +147,34 @@
 
 ;; Arithmetical operators
 
+(define-typed-syntax (binary* x y) ≫
+  [⊢ x ≫ x- ⇒ τ_x]
+  #:when (arithmetic-type? #'τ_x)
+  [⊢ y ≫ y- ⇒ τ_y]
+  #:when (arithmetic-type? #'τ_y)
+  #:with τ (common-real-type #'τ_x #'τ_y)
+  --------
+  [⊢ (constrain-value τ (#%app- *- (cast τ x) (cast τ y))) ⇒ τ])
+
+(define-typed-syntax (/ x y) ≫
+  [⊢ x ≫ x- ⇒ τ_x]
+  #:when (arithmetic-type? #'τ_x)
+  [⊢ y ≫ y- ⇒ τ_y]
+  #:when (arithmetic-type? #'τ_y)
+  #:with τ (common-real-type #'τ_x #'τ_y)
+  #:with op- (if (floating-type? #'τ) #'/- #'quotient-)
+  --------
+  [⊢ (#%app- op- (cast τ x) (cast τ y)) ⇒ τ])
+
+(define-typed-syntax (% x y) ≫
+  [⊢ x ≫ x- ⇒ τ_x]
+  #:when (integer-type? #'τ_x)
+  [⊢ y ≫ y- ⇒ τ_y]
+  #:when (integer-type? #'τ_y)
+  #:with τ (common-real-type #'τ_x #'τ_y)
+  --------
+  [⊢ (#%app- remainder- (cast τ x) (cast τ y)) ⇒ τ])
+
 (define-typed-syntax (binary+ x y) ≫
   [⊢ x ≫ x- ⇒ τ_x]
   [⊢ y ≫ y- ⇒ τ_y]
@@ -140,11 +182,11 @@
   (cond
     [(and (arithmetic-type? #'τ_x) (arithmetic-type? #'τ_y))
      (with-syntax ([τ (common-real-type #'τ_x #'τ_y)])
-       (assign-type #'(#%plain-app- constrain-value τ (+- (cast τ x) (cast τ y))) #'τ))]
+       (assign-type #'(constrain-value τ (#%app- +- (cast τ x) (cast τ y))) #'τ))]
     [(and (Pointer? #'τ_x) (integer-type? #'τ_y))
-     (assign-type #'(#%plain-app- pointer-inc x- y-) #'τ_x)]
+     (assign-type #'(#%app- pointer-inc x- y-) #'τ_x)]
     [(and (Pointer? #'τ_y) (integer-type? #'τ_x))
-     (assign-type #'(#%plain-app- pointer-inc y- x-) #'τ_y)]
+     (assign-type #'(#%app- pointer-inc y- x-) #'τ_y)]
     [else (raise-syntax-error #f "invalid types" this-syntax)])
   --------
   [≻ expr])
@@ -156,16 +198,56 @@
   (cond
     [(and (arithmetic-type? #'τ_x) (arithmetic-type? #'τ_y))
      (with-syntax ([τ (common-real-type #'τ_x #'τ_y)])
-       (assign-type #'(#%plain-app- constrain-value τ (-- (cast τ x) (cast τ y))) #'τ))]
+       (assign-type #'(constrain-value τ (#%app- -- (cast τ x) (cast τ y))) #'τ))]
     [(and (Pointer? #'τ_x) (integer-type? #'τ_y))
-     (assign-type #'(#%plain-app- pointer-inc x- (-- y-)) #'τ_x)]
+     (assign-type #'(#%app- pointer-inc x- (-- y-)) #'τ_x)]
     [(and (Pointer? #'τ_x) (type=? #'τ_x #'τ_y))
-     (assign-type #'(#%plain-app- pointer-diff x- y-) #'|long long int|)]
+     (assign-type #'(#%app- pointer-diff x- y-) #'|long long int|)]
     [else (raise-syntax-error #f "invalid types" this-syntax)])
   --------
   [≻ expr])
 
+(define-typed-syntax (<< x y) ≫
+  [⊢ x ≫ x- ⇒ τ_x]
+  #:when (integer-type? #'τ_x)
+  [⊢ y ≫ y- ⇒ τ_y]
+  #:when (integer-type? #'τ_y)
+  #:with τ_x^ (integer-promote #'τ_x)
+  #:with τ_y^ (integer-promote #'τ_y)
+  ; TODO: negative y and overshifting is UB
+  --------
+  [⊢ (#%app- arithmetic-shift- (cast τ_x^ x) (cast τ_y^ y)) ⇒ τ_x])
+
+(define-typed-syntax (>> x y) ≫
+  --------
+  ; FIXME: this isn't strictly correct
+  [≻ (<< x (- y))])
+
 ;; Comparison operators
+
+; TODO: pointer, complex comparisons
+
+(define-syntaxes (< > <= >= ==)
+  (let ([make-comparison
+         (λ (op)
+           (λ (stx)
+             (syntax-parse/typecheck stx
+               [(_ x y) ≫
+                [⊢ x ≫ x- ⇒ τ_x]
+                [⊢ y ≫ y- ⇒ τ_y]
+                #:with τ (common-real-type #'τ_x #'τ_y)
+                #:with op- op
+                --------
+                [⊢ (if- (#%app- op- (cast τ x) (cast τ y)) '1 '0) ⇒ |int|]])))])
+    (values (make-comparison #'<-)
+            (make-comparison #'>-)
+            (make-comparison #'<=-)
+            (make-comparison #'>=-)
+            (make-comparison #'=-))))
+
+(define-typed-syntax (!= x y) ≫
+  --------
+  [≻ (! (== x y))])
 
 ;; Assignment
 
@@ -183,7 +265,64 @@
     --------
     [⊢ (lvalue-pre-update! x- (λ (v) (op v+ y))) ⇒ τ]))
 
+(define-assignment-operator *= *)
+(define-assignment-operator /= /)
+(define-assignment-operator %= %)
 (define-assignment-operator += +)
+(define-assignment-operator -= -)
+(define-assignment-operator <<= <<)
+(define-assignment-operator >>= >>)
+(define-assignment-operator &= &)
+(define-assignment-operator ^= ^)
+(define-assignment-operator \|= \|)
+
+;; Bitwise operators
+
+(define-syntaxes (binary& ^ \|)
+  (let ([make-op
+         (λ (op)
+           (λ (stx)
+             (syntax-parse/typecheck stx
+               [(_ x y) ≫
+                [⊢ x ≫ x- ⇒ τ_x]
+                #:when (integer-type? #'τ_x)
+                [⊢ y ≫ y- ⇒ τ_y]
+                #:when (integer-type? #'τ_y)
+                #:with τ (common-real-type #'τ_x #'τ_y)
+                #:with op- op
+                --------
+                [⊢ (#%app- op- (cast τ x) (cast τ y)) ⇒ τ]])))])
+    (values (make-op #'bitwise-and)
+            (make-op #'bitwise-xor)
+            (make-op #'bitwise-ior))))
+
+;; Logical operators
+
+(define-typed-syntax (&& e1 e2) ≫
+  [⊢ e1 ≫ e1- ⇒ τ1]
+  #:when (scalar-type? #'τ1)
+  [⊢ e2 ≫ e2- ⇒ τ2]
+  #:when (scalar-type? #'τ2)
+  --------
+  [⊢ (if- (and- (#%app- zero?- (== 0 e1)) (#%app- zero?- (== 0 e2))) '1 '0) ⇒ int])
+
+(define-typed-syntax (\|\| e1 e2) ≫
+  [⊢ e1 ≫ e1- ⇒ τ1]
+  #:when (scalar-type? #'τ1)
+  [⊢ e2 ≫ e2- ⇒ τ2]
+  #:when (scalar-type? #'τ2)
+  --------
+  [⊢ (if- (or- (#%app- zero?- (== 0 e1)) (#%app- zero?- (== 0 e2))) '1 '0) ⇒ int])
+
+(define-typed-syntax (?: e1 e2 e3) ≫
+  [⊢ e1 ≫ e1- ⇒ τ1]
+  #:when (scalar-type? #'τ1)
+  [⊢ e2 ≫ e2- ⇒ τ2]
+  ; TODO: types of e2/e3
+  [⊢ e3 ≫ e3- ⇒ τ3]
+  #:with τ (common-real-type #'τ2 #'τ3)
+  --------
+  [⊢ (if- (#%app- zero?- (== 0 e1)) (cast τ e2) (cast τ e3)) ⇒ τ])
 
 ;; Comma
 
@@ -205,7 +344,7 @@
     [(_ (~Array dims)) (error 'TODO)]
     [(_ (~Struct tag))
      (with-syntax ([((f . τ_e) ...) (struct-tag->info #'tag)])
-       #'(#%plain-app vector (unspecified-initializer τ_e) ...))]
+       #'(#%app- vector (unspecified-initializer τ_e) ...))]
     [(_ τ) #''unspecified]))
 
 (define-syntax static-initializer

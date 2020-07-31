@@ -18,6 +18,7 @@
              function-decl
              make-→
              function-return-type
+             scalar-type?
              sizeof/type
              make-conversion)
  define-struct-type
@@ -136,6 +137,9 @@
 
 (define-type-constructor Pointer
   #:arity = 1)
+
+(define-for-syntax (scalar-type? τ)
+  (or (arithmetic-type? τ) (Pointer? τ)))
 
 (define-for-syntax (sizeof/type τ)
   ; TODO: derived types

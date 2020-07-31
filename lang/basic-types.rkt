@@ -17,7 +17,8 @@
            float double |long double|
            ;|float _Complex| |double _Complex| |long double _Complex|
            void)
- (for-syntax basic-type?
+ (for-syntax floating-type?
+             basic-type?
              character-type?
              integer-type?
              real-type?
@@ -26,6 +27,7 @@
              make-conversion/basic
              common-real-type
              sizeof/basic-type)
+ constrain-value ; FIXME: don't expose this
  #%datum)
 
 ;; TODO: integer type sizes and extended types should be configurable
