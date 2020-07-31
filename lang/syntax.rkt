@@ -5,10 +5,16 @@
 (require (prefix-in r: (only-in racket/base void))
          racket/stxparam)
 
-(provide empty-statement break continue do for if while)
+(provide
+ empty-statement
+ break
+ continue
+ do
+ for
+ (rename-out [if+ if])
+ while)
 
-(define-syntax-rule (empty-statement)
-  (#%plain-app r:void))
+(define-syntax-rule (empty-statement) (r:void))
 
 (define-syntax-parameter break
   (λ (stx)
@@ -20,11 +26,11 @@
 
 ; TODO: check predicate types are scalar
 
-(define-typed-syntax if
+(define-typed-syntax if+
   [(_ predicate consequent) ≫
    [⊢ predicate ≫ predicate- ⇒ τ_pred]
    --------
-   [≻ (if predicate consequent (empty-statement))]]
+   [≻ (if+ predicate consequent (empty-statement))]]
   [(_ predicate consequent alternate) ≫
    [⊢ predicate ≫ predicate- ⇒ τ_pred]
    --------

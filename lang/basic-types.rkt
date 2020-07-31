@@ -28,7 +28,7 @@
              common-real-type
              sizeof/basic-type)
  constrain-value ; FIXME: don't expose this
- #%datum)
+ (rename-out [#%datum+ #%datum]))
 
 ;; TODO: integer type sizes and extended types should be configurable
 
@@ -291,7 +291,7 @@
   (values crt crt))
 
 ; TODO: suffixes, different default signedness for decimal/hex/octal
-(define-typed-syntax #%datum
+(define-typed-syntax #%datum+
   [(_ . n:exact-integer) ≫
    ; all our non-short int types are 64-bit for now.
    #:with (n^ τ)
@@ -306,7 +306,7 @@
    [⊢ 'f ⇒ double]]
   [(_ . c:char) ≫
    --------
-   [⊢ (#%plain-app- char->integer 'c) ⇒ int]]
+   [⊢ (char->integer 'c) ⇒ int]]
   [(_ . d) ≫
    --------
    [#:error (type-error #:src #'d #:msg "unsupported literal")]])

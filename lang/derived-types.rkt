@@ -24,9 +24,9 @@
  define-struct-type
  struct-reference
  ...
- #%datum)
+ (rename-out [#%datum+ #%datum]))
 
-(define-typed-syntax #%datum
+(define-typed-syntax #%datum+
   [(_ . s:string) ≫
    #:with cs (list->vector `(,@(bytes->list (string->bytes/latin-1 (syntax-e #'s))) 0))
    --------

@@ -9,7 +9,7 @@
                      syntax/intdef)
          racket/stxparam
          "../link.rkt"
-         "expression.rkt" ; we really do want #%datum
+         (only-in "expression.rkt" [#%datum #%datum+])
          "goto.rkt"
          "rep.rkt")
 
@@ -140,7 +140,7 @@
                            (cond
                              [(not init-v) #f]
                              [function? #`(define x- #,init-v)]
-                             [else #`(define x- (#%plain-app- make-variable (cast #,τ #,init-v)))])))
+                             [else #`(define x- (make-variable (cast #,τ #,init-v)))])))
                        #`(begin #,@renamer-defs #,@(cond [def => list] [else '()])))
                      (attribute decl.x)
                      (map (current-type-eval) (attribute decl.τ))
@@ -159,7 +159,7 @@
           id
           (struct-copy declared-var info [defined? #t]))
          #`(define #,(declared-var-object-id info)
-             (#%plain-app- make-variable (cast #,(declared-var-type info) 0)))))
+             (make-variable (cast #,(declared-var-type info) (#%datum+ . 0))))))
      (define extern-ids
        (filter
         values
@@ -205,7 +205,7 @@
                    (syntax-local-bind-syntaxes (syntax->list #'(arg^ ...)) #f def-ctx)
                    (syntax-local-bind-syntaxes (syntax->list #'(arg+ ...)) renamers def-ctx)
                    #`(begin
-                       (define-values (arg^ ...) (#%plain-app- values (#%plain-app- make-variable arg-) ...))
+                       (define-values (arg^ ...) (values (make-variable arg-) ...))
                        (define-syntaxes (arg+ ...) #,renamers))))
                (values #`(#,@arg-ids . #,rest-arg) arg-renamers))]
          [else (values #'unspecified #'(begin))]))
@@ -240,8 +240,7 @@
                               [τ (in-list (map (current-type-eval) (attribute decl.τ)))]
                               [v (in-list (attribute decl.v))])
                      (define init-expr
-                       #`(#%plain-app-
-                          make-variable
+                       #`(make-variable
                           #,(cond
                               [v #`(initializer #,τ #,v)]
                               [static? #`(static-initializer #,τ)]
@@ -289,15 +288,17 @@
       [(_) ≫
        #:when (void? τ_ret)
        --------
-       [≻ (#%plain-app #,ec)]]
+       [≻ (#,ec)]]
       [(_ v) ≫
        #:when (not (void? τ_ret))
        --------
-       [≻ (#%plain-app #,ec (cast #,τ_ret v))]])))
+       [≻ (#,ec (cast #,τ_ret v))]])))
 
 ;; Tests
 
 (module+ test
+  (require (only-in "expression.rkt" #%datum))
+
   (translation-unit
    (declare () [int x 10])
    (declare () [int y x]))

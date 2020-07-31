@@ -6,11 +6,10 @@
 
 (require (for-syntax racket/list
                      racket/match)
-         "derived-types.rkt" ; we really do want #%datum
          "rep.rkt")
 
 (provide
- #%app
+ (rename-out [#%app+ #%app])
  |.| post++
  pre++ ~ ! sizeof cast
  * / % + -  << >> & ^ \|
@@ -21,6 +20,11 @@
  initializer
  static-initializer
  unspecified-initializer)
+
+(define-syntax-rule (#%datum+ . d) (derived-types:#%datum . d))
+
+(define-syntax-rule (nonzero?+ e)
+  (zero? (== (#%datum+ . 0) e)))
 
 (define-syntax define-unary/binary-operators
   (syntax-parser
@@ -45,7 +49,7 @@
 
 ; TODO: array subscript
 
-(define-typed-syntax (#%app f arg ...) ≫
+(define-typed-syntax (#%app+ f arg ...) ≫
   [⊢ f ≫ f- ⇒ τ_f]
   ; TODO: default argument promotion
   #:with (τ_ret arg^ ...)
@@ -81,7 +85,7 @@
   #:with x (generate-temporary #'x)
   #:with x+ (assign-type #'x #'τ)
   --------
-  [⊢ (lvalue-post-update! v- (λ (x) (+ x+ 1))) ⇒ τ])
+  [⊢ (lvalue-post-update! v- (λ (x) (+ x+ (#%datum+ . 1)))) ⇒ τ])
 
 ;; Unary operators
 
@@ -111,20 +115,20 @@
   #:when (arithmetic-type? #'τ_v)
   #:with τ^ (integer-promote #'τ_v)
   --------
-  [⊢ (#%app- -- (cast τ^ v)) ⇒ τ^])
+  [⊢ (-- (cast τ^ v)) ⇒ τ^])
 
 (define-typed-syntax (~ v) ≫
   [⊢ v ≫ v- ⇒ τ_v]
   #:when (integer-type? #'τ_v)
   #:with τ^ (integer-promote #'τ_v)
   --------
-  [⊢ (#%app- bitwise-not- (cast τ^ v)) ⇒ τ^])
+  [⊢ (bitwise-not (cast τ^ v)) ⇒ τ^])
 
 (define-typed-syntax (! v) ≫
   [⊢ v ≫ v- ⇒ τ_v]
   #:when (scalar-type? #'τ_v)
   --------
-  [≻ (== 0 v)])
+  [≻ (== (#%datum+ . 0) v)])
 
 (define-typed-syntax sizeof
   [(_ τ:type) ≫
@@ -154,7 +158,7 @@
   #:when (arithmetic-type? #'τ_y)
   #:with τ (common-real-type #'τ_x #'τ_y)
   --------
-  [⊢ (constrain-value τ (#%app- *- (cast τ x) (cast τ y))) ⇒ τ])
+  [⊢ (constrain-value τ (*- (cast τ x) (cast τ y))) ⇒ τ])
 
 (define-typed-syntax (/ x y) ≫
   [⊢ x ≫ x- ⇒ τ_x]
@@ -162,9 +166,9 @@
   [⊢ y ≫ y- ⇒ τ_y]
   #:when (arithmetic-type? #'τ_y)
   #:with τ (common-real-type #'τ_x #'τ_y)
-  #:with op- (if (floating-type? #'τ) #'/- #'quotient-)
+  #:with op- (if (floating-type? #'τ) #'/- #'quotient)
   --------
-  [⊢ (#%app- op- (cast τ x) (cast τ y)) ⇒ τ])
+  [⊢ (op- (cast τ x) (cast τ y)) ⇒ τ])
 
 (define-typed-syntax (% x y) ≫
   [⊢ x ≫ x- ⇒ τ_x]
@@ -173,7 +177,7 @@
   #:when (integer-type? #'τ_y)
   #:with τ (common-real-type #'τ_x #'τ_y)
   --------
-  [⊢ (#%app- remainder- (cast τ x) (cast τ y)) ⇒ τ])
+  [⊢ (remainder (cast τ x) (cast τ y)) ⇒ τ])
 
 (define-typed-syntax (binary+ x y) ≫
   [⊢ x ≫ x- ⇒ τ_x]
@@ -182,11 +186,11 @@
   (cond
     [(and (arithmetic-type? #'τ_x) (arithmetic-type? #'τ_y))
      (with-syntax ([τ (common-real-type #'τ_x #'τ_y)])
-       (assign-type #'(constrain-value τ (#%app- +- (cast τ x) (cast τ y))) #'τ))]
+       (assign-type #'(constrain-value τ (+- (cast τ x) (cast τ y))) #'τ))]
     [(and (Pointer? #'τ_x) (integer-type? #'τ_y))
-     (assign-type #'(#%app- pointer-inc x- y-) #'τ_x)]
+     (assign-type #'(pointer-inc x- y-) #'τ_x)]
     [(and (Pointer? #'τ_y) (integer-type? #'τ_x))
-     (assign-type #'(#%app- pointer-inc y- x-) #'τ_y)]
+     (assign-type #'(pointer-inc y- x-) #'τ_y)]
     [else (raise-syntax-error #f "invalid types" this-syntax)])
   --------
   [≻ expr])
@@ -198,11 +202,11 @@
   (cond
     [(and (arithmetic-type? #'τ_x) (arithmetic-type? #'τ_y))
      (with-syntax ([τ (common-real-type #'τ_x #'τ_y)])
-       (assign-type #'(constrain-value τ (#%app- -- (cast τ x) (cast τ y))) #'τ))]
+       (assign-type #'(constrain-value τ (-- (cast τ x) (cast τ y))) #'τ))]
     [(and (Pointer? #'τ_x) (integer-type? #'τ_y))
-     (assign-type #'(#%app- pointer-inc x- (-- y-)) #'τ_x)]
+     (assign-type #'(pointer-inc x- (-- y-)) #'τ_x)]
     [(and (Pointer? #'τ_x) (type=? #'τ_x #'τ_y))
-     (assign-type #'(#%app- pointer-diff x- y-) #'|long long int|)]
+     (assign-type #'(pointer-diff x- y-) #'|long long int|)]
     [else (raise-syntax-error #f "invalid types" this-syntax)])
   --------
   [≻ expr])
@@ -216,7 +220,7 @@
   #:with τ_y^ (integer-promote #'τ_y)
   ; TODO: negative y and overshifting is UB
   --------
-  [⊢ (#%app- arithmetic-shift- (cast τ_x^ x) (cast τ_y^ y)) ⇒ τ_x])
+  [⊢ (arithmetic-shift (cast τ_x^ x) (cast τ_y^ y)) ⇒ τ_x])
 
 (define-typed-syntax (>> x y) ≫
   --------
@@ -238,7 +242,7 @@
                 #:with τ (common-real-type #'τ_x #'τ_y)
                 #:with op- op
                 --------
-                [⊢ (if- (#%app- op- (cast τ x) (cast τ y)) '1 '0) ⇒ |int|]])))])
+                [⊢ (if (op- (cast τ x) (cast τ y)) 1 0) ⇒ |int|]])))])
     (values (make-comparison #'<-)
             (make-comparison #'>-)
             (make-comparison #'<=-)
@@ -291,7 +295,7 @@
                 #:with τ (common-real-type #'τ_x #'τ_y)
                 #:with op- op
                 --------
-                [⊢ (#%app- op- (cast τ x) (cast τ y)) ⇒ τ]])))])
+                [⊢ (op- (cast τ x) (cast τ y)) ⇒ τ]])))])
     (values (make-op #'bitwise-and)
             (make-op #'bitwise-xor)
             (make-op #'bitwise-ior))))
@@ -304,7 +308,7 @@
   [⊢ e2 ≫ e2- ⇒ τ2]
   #:when (scalar-type? #'τ2)
   --------
-  [⊢ (if- (and- (#%app- zero?- (== 0 e1)) (#%app- zero?- (== 0 e2))) '1 '0) ⇒ int])
+  [⊢ (if (and (nonzero?+ e1) (nonzero?+ e2)) 1 0) ⇒ int])
 
 (define-typed-syntax (\|\| e1 e2) ≫
   [⊢ e1 ≫ e1- ⇒ τ1]
@@ -312,7 +316,7 @@
   [⊢ e2 ≫ e2- ⇒ τ2]
   #:when (scalar-type? #'τ2)
   --------
-  [⊢ (if- (or- (#%app- zero?- (== 0 e1)) (#%app- zero?- (== 0 e2))) '1 '0) ⇒ int])
+  [⊢ (if (or (nonzero?+ e1) (nonzero?+ e2)) 1 0) ⇒ int])
 
 (define-typed-syntax (?: e1 e2 e3) ≫
   [⊢ e1 ≫ e1- ⇒ τ1]
@@ -322,7 +326,7 @@
   [⊢ e3 ≫ e3- ⇒ τ3]
   #:with τ (common-real-type #'τ2 #'τ3)
   --------
-  [⊢ (if- (#%app- zero?- (== 0 e1)) (cast τ e2) (cast τ e3)) ⇒ τ])
+  [⊢ (if (nonzero?+ e1) (cast τ e2) (cast τ e3)) ⇒ τ])
 
 ;; Comma
 
@@ -330,7 +334,7 @@
   [⊢ e1 ≫ e1- ⇒ τ1]
   [⊢ e2 ≫ e2- ⇒ τ2]
   --------
-  [⊢ (begin- e1- e2-) ⇒ τ2])
+  [⊢ (begin e1- e2-) ⇒ τ2])
 
 ;; Initializers
 
@@ -344,7 +348,7 @@
     [(_ (~Array dims)) (error 'TODO)]
     [(_ (~Struct tag))
      (with-syntax ([((f . τ_e) ...) (struct-tag->info #'tag)])
-       #'(#%app- vector (unspecified-initializer τ_e) ...))]
+       #'(vector (unspecified-initializer τ_e) ...))]
     [(_ τ) #''unspecified]))
 
 (define-syntax static-initializer
