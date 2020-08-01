@@ -10,8 +10,8 @@
 
 (provide
  (rename-out [#%app+ #%app])
- |.| post++
- pre++ ~ ! sizeof cast
+ |.| post++ post--
+ pre++ pre-- ~ ! sizeof cast
  * / % + -  << >> & ^ \|
  < > <= >= == !=
  = *= /= %= += -= <<= >>= &= ^= \|=
@@ -109,11 +109,22 @@
   --------
   [⊢ (lvalue-post-update! v- (λ (x) (+ x+ (#%datum+ . 1)))) ⇒ τ])
 
+(define-typed-syntax (post-- v) ≫
+  [⊢ v ≫ v- ⇒ τ]
+  #:with x (generate-temporary #'x)
+  #:with x+ (assign-type #'x #'τ)
+  --------
+  [⊢ (lvalue-post-update! v- (λ (x) (- x+ (#%datum+ . 1)))) ⇒ τ])
+
 ;; Unary operators
 
 (define-typed-syntax (pre++ v) ≫
   --------
-  [≻ (+= v 1)])
+  [≻ (+= v (#%datum+ . 1))])
+
+(define-typed-syntax (pre-- v) ≫
+  --------
+  [≻ (-= v (#%datum+ . 1))])
 
 (define-typed-syntax (unary& v) ≫
   [⊢ v ≫ v- ⇒ τ]
