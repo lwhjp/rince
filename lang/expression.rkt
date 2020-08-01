@@ -16,6 +16,7 @@
  < > <= >= == !=
  = *= /= %= += -= <<= >>= &= ^= \|=
  && \|\| ?: |,|
+ __ensure-arithmetic
  __ensure-integer
  __ensure-scalar
  __nonzero?
@@ -26,6 +27,13 @@
  unspecified-initializer)
 
 (define-syntax-rule (#%datum+ . d) (derived-types:#%datum . d))
+
+(define-typed-syntax (__ensure-arithmetic e) ≫
+  [⊢ e ≫ e- ⇒ τ]
+  #:fail-unless (arithmetic-type? #'τ)
+  "expected an arithmetic type"
+  --------
+  [≻ e])
 
 (define-typed-syntax (__ensure-integer e) ≫
   [⊢ e ≫ e- ⇒ τ]
@@ -186,31 +194,46 @@
 
 (define-typed-syntax (binary* x y) ≫
   [⊢ x ≫ x- ⇒ τ_x]
-  #:when (arithmetic-type? #'τ_x)
+  #:fail-when (and (not (arithmetic-type? #'τ_x)) #'x)
+  "expected: arithmetic type"
   [⊢ y ≫ y- ⇒ τ_y]
-  #:when (arithmetic-type? #'τ_y)
-  #:with τ (common-real-type #'τ_x #'τ_y)
+  #:fail-when (and (not (arithmetic-type? #'τ_y)) #'y)
+  "expected: arithmetic type"
+  #:with (τ_x^ τ_y^ τ^)
+  (call-with-values
+   (λ () (usual-arithmetic-conversion-types #'τ_x #'τ_y))
+   list)
   --------
-  [⊢ (constrain-value τ (*- (cast τ x) (cast τ y))) ⇒ τ])
+  [⊢ (*- (cast τ_x^ x) (cast τ_y^ y)) ⇒ τ^])
 
 (define-typed-syntax (/ x y) ≫
   [⊢ x ≫ x- ⇒ τ_x]
-  #:when (arithmetic-type? #'τ_x)
+  #:fail-when (and (not (arithmetic-type? #'τ_x)) #'x)
+  "expected: arithmetic type"
   [⊢ y ≫ y- ⇒ τ_y]
-  #:when (arithmetic-type? #'τ_y)
-  #:with τ (common-real-type #'τ_x #'τ_y)
-  #:with op- (if (floating-type? #'τ) #'/- #'quotient)
+  #:fail-when (and (not (arithmetic-type? #'τ_y)) #'y)
+  "expected: arithmetic type"
+  #:with (τ_x^ τ_y^ τ^)
+  (call-with-values
+   (λ () (usual-arithmetic-conversion-types #'τ_x #'τ_y))
+   list)
+  #:with op- (if (floating-type? #'τ^) #'/- #'quotient)
   --------
-  [⊢ (op- (cast τ x) (cast τ y)) ⇒ τ])
+  [⊢ (op- (cast τ_x^ x) (cast τ_y^ y)) ⇒ τ^])
 
 (define-typed-syntax (% x y) ≫
   [⊢ x ≫ x- ⇒ τ_x]
-  #:when (integer-type? #'τ_x)
+  #:fail-when (and (not (integer-type? #'τ_x)) #'x)
+  "expected: integer type"
   [⊢ y ≫ y- ⇒ τ_y]
-  #:when (integer-type? #'τ_y)
-  #:with τ (common-real-type #'τ_x #'τ_y)
+  #:fail-when (and (not (integer-type? #'τ_y)) #'y)
+  "expected: integer type"
+  #:with (τ_x^ τ_y^ τ^)
+  (call-with-values
+   (λ () (usual-arithmetic-conversion-types #'τ_x #'τ_y))
+   list)
   --------
-  [⊢ (remainder (cast τ x) (cast τ y)) ⇒ τ])
+  [⊢ (remainder (cast τ_x^ x) (cast τ_y^ y)) ⇒ τ^])
 
 (define-typed-syntax (binary+ x y) ≫
   [⊢ x ≫ x- ⇒ τ_x]
@@ -246,14 +269,16 @@
 
 (define-typed-syntax (<< x y) ≫
   [⊢ x ≫ x- ⇒ τ_x]
-  #:when (integer-type? #'τ_x)
+  #:fail-when (and (not (integer-type? #'τ_x)) #'x)
+  "expected: integer type"
   [⊢ y ≫ y- ⇒ τ_y]
-  #:when (integer-type? #'τ_y)
+  #:fail-when (and (not (integer-type? #'τ_y)) #'y)
+  "expected: integer type"
   #:with τ_x^ (integer-promote #'τ_x)
   #:with τ_y^ (integer-promote #'τ_y)
   ; TODO: negative y and overshifting is UB
   --------
-  [⊢ (arithmetic-shift (cast τ_x^ x) (cast τ_y^ y)) ⇒ τ_x])
+  [⊢ (arithmetic-shift (cast τ_x^ x) (cast τ_y^ y)) ⇒ τ_x^])
 
 (define-typed-syntax (>> x y) ≫
   --------
@@ -322,13 +347,18 @@
              (syntax-parse/typecheck stx
                [(_ x y) ≫
                 [⊢ x ≫ x- ⇒ τ_x]
-                #:when (integer-type? #'τ_x)
+                #:fail-when (and (not (integer-type? #'τ_x)) #'x)
+                "expected: integer type"
                 [⊢ y ≫ y- ⇒ τ_y]
-                #:when (integer-type? #'τ_y)
-                #:with τ (common-real-type #'τ_x #'τ_y)
+                #:fail-when (and (not (integer-type? #'τ_y)) #'y)
+                "expected: integer type"
+                #:with (τ_x^ τ_y^ τ^)
+                (call-with-values
+                 (λ () (usual-arithmetic-conversion-types #'τ_x #'τ_y))
+                 list)
                 #:with op- op
                 --------
-                [⊢ (op- (cast τ x) (cast τ y)) ⇒ τ]])))])
+                [⊢ (op- (cast τ_x^ x) (cast τ_y^ y)) ⇒ τ^]])))])
     (values (make-op #'bitwise-and)
             (make-op #'bitwise-xor)
             (make-op #'bitwise-ior))))

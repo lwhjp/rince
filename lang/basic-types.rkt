@@ -26,6 +26,7 @@
              integer-promote
              make-conversion/basic
              common-real-type
+             usual-arithmetic-conversion-types
              sizeof/basic-type)
  constrain-value ; FIXME: don't expose this
  (rename-out [#%datum+ #%datum]))
@@ -285,10 +286,10 @@
               [(integer-type⊂? τu τs) τs]
               [else (error "TODO: signed->unsigned type")]))]))]))
 
-#;(define-for-syntax (usual-arithmetic-conversion τ1 τ2)
+(define-for-syntax (usual-arithmetic-conversion-types τ1 τ2)
   (define crt (common-real-type τ1 τ2))
   ; TODO: complex
-  (values crt crt))
+  (values crt crt crt))
 
 ; TODO: suffixes, different default signedness for decimal/hex/octal
 (define-typed-syntax #%datum+
