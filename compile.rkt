@@ -1,6 +1,7 @@
 #lang racket/base
 
-(require "lang/parse.rkt")
+(require syntax/strip-context
+         "lang/parse.rkt")
 
 (provide compile)
 
@@ -14,4 +15,4 @@
 (namespace-require lang compile-ns)
 
 (define (compile in [source-name #f])
-  (eval (c->racket in source-name) compile-ns))
+  (eval (strip-context (c->racket in source-name)) compile-ns))

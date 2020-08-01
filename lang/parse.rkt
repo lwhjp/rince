@@ -2,8 +2,6 @@
 
 (require (for-syntax racket/base)
          (for-template "syntax.rkt")
-         ; for-template doesn't seem to pick up #%app properly
-         (prefix-in c: "syntax.rkt")
          racket/match
          racket/string
          racket/stxparam
@@ -57,7 +55,7 @@
   [(expr:char src source wide?) (string-ref source 0)] ; TODO: multi-char constants
   [(expr:string src source wide?) source]
   ; TODO: compound, array-ref
-  [(expr:call src function arguments) #`(c:#%app #,(*expr function) #,@(map *expr arguments))]
+  [(expr:call src function arguments) #`(#%app #,(*expr function) #,@(map *expr arguments))]
   [(expr:member src expr label) #`(|.| #,(*expr expr) #,(*id label))]
   [(expr:pointer-member src expr label) #`(-> #,(*expr expr) #,(*id label))]
   [(expr:postfix src expr op) (let ([op (*id op)]) #`(#,(format-id op "post~a" op) #,(*expr expr)))]
