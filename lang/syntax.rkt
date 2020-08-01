@@ -45,11 +45,10 @@
 ; TODO: switch
 
 (define-typed-syntax (while pred body) ≫
-  [⊢ pred ≫ pred- ⇒ τ_pred]
   --------
   [≻ (begin
        #:label loop
-       (when (zero? pred-) (goto end))
+       (when (__zero? pred) (goto end))
        (syntax-parameterize
            ([break (syntax-rules () [(_) (goto end)])]
             [continue (syntax-rules () [(_) (goto loop)])])
@@ -58,7 +57,6 @@
        #:label end)])
 
 (define-typed-syntax (do body pred) ≫
-  [⊢ pred ≫ pred- ⇒ τ_pred]
   --------
   [≻ (begin
        #:label loop
@@ -67,31 +65,24 @@
             [continue (syntax-rules () [(_) (goto cont)])])
          body)
        #:label cont
-       (unless (zero? pred-) (goto loop))
+       (unless (__zero? pred) (goto loop))
        #:label end)])
 
 (define-typed-syntax for
-  [(_ (() pred step) body) ≫
-   --------
-   [≻ (for ((empty-statement) pred step) body)]]
-  [(_ (init () step) body) ≫
-   --------
-   [≻ (for (init 1 step) body)]]
-  [(_ (init pred ()) body) ≫
-   --------
-   [≻ (for (init pred (empty-statement)) body)]]
-  [(_ (init pred step) body) ≫
-   [⊢ pred ≫ pred- ⇒ τ_pred]
+  [(_ ((~or () init:declaration init)
+       (~or () pred)
+       (~or () step))
+      body) ≫
    --------
    [≻ (block
-       init
+       (~? init)
        #:label loop
-       (when (zero? pred-) (goto end))
+       (~? (when (__zero? pred) (goto end)))
        (syntax-parameterize
            ([break (syntax-rules () [(_) (goto end)])]
             [continue (syntax-rules () [(_) (goto cont)])])
          body)
        #:label cont
-       step
+       (~? step)
        (goto loop)
        #:label end)]])

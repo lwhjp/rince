@@ -16,6 +16,10 @@
  < > <= >= == !=
  = *= /= %= += -= <<= >>= &= ^= \|=
  && \|\| ?: |,|
+ __ensure-integer
+ __ensure-scalar
+ __nonzero?
+ __zero?
  ; FIXME: these should not be valid C names
  initializer
  static-initializer
@@ -23,8 +27,26 @@
 
 (define-syntax-rule (#%datum+ . d) (derived-types:#%datum . d))
 
-(define-syntax-rule (nonzero?+ e)
-  (zero? (== (#%datum+ . 0) e)))
+(define-typed-syntax (__ensure-integer e) ≫
+  [⊢ e ≫ e- ⇒ τ]
+  #:fail-unless (integer-type? #'τ)
+  "expected an integer type"
+  --------
+  [≻ e])
+
+(define-typed-syntax (__ensure-scalar e) ≫
+  [⊢ e ≫ e- ⇒ τ]
+  #:fail-unless (scalar-type? #'τ)
+  "expected a scalar type"
+  --------
+  [≻ e])
+
+(define-syntax-rule (__nonzero? e)
+  (not (__zero? e)))
+
+(define-syntax-rule (__zero? e)
+  ; TODO: null pointers
+  (zero? (__ensure-scalar e)))
 
 (define-syntax define-unary/binary-operators
   (syntax-parser
@@ -303,30 +325,20 @@
 ;; Logical operators
 
 (define-typed-syntax (&& e1 e2) ≫
-  [⊢ e1 ≫ e1- ⇒ τ1]
-  #:when (scalar-type? #'τ1)
-  [⊢ e2 ≫ e2- ⇒ τ2]
-  #:when (scalar-type? #'τ2)
   --------
-  [⊢ (if (and (nonzero?+ e1) (nonzero?+ e2)) 1 0) ⇒ int])
+  [⊢ (if (and (__nonzero? e1) (__nonzero? e2)) 1 0) ⇒ int])
 
 (define-typed-syntax (\|\| e1 e2) ≫
-  [⊢ e1 ≫ e1- ⇒ τ1]
-  #:when (scalar-type? #'τ1)
-  [⊢ e2 ≫ e2- ⇒ τ2]
-  #:when (scalar-type? #'τ2)
   --------
-  [⊢ (if (or (nonzero?+ e1) (nonzero?+ e2)) 1 0) ⇒ int])
+  [⊢ (if (or (__nonzero? e1) (__nonzero? e2)) 1 0) ⇒ int])
 
 (define-typed-syntax (?: e1 e2 e3) ≫
-  [⊢ e1 ≫ e1- ⇒ τ1]
-  #:when (scalar-type? #'τ1)
   [⊢ e2 ≫ e2- ⇒ τ2]
   ; TODO: types of e2/e3
   [⊢ e3 ≫ e3- ⇒ τ3]
   #:with τ (common-real-type #'τ2 #'τ3)
   --------
-  [⊢ (if (nonzero?+ e1) (cast τ e2) (cast τ e3)) ⇒ τ])
+  [⊢ (if (__nonzero? e1) (cast τ e2) (cast τ e3)) ⇒ τ])
 
 ;; Comma
 

@@ -1,7 +1,7 @@
 #lang racket/base
 
 (require (for-syntax racket/base)
-         (for-template "syntax.rkt")
+         (for-template (only-in "syntax.rkt" make-→))
          racket/match
          racket/string
          racket/stxparam
@@ -121,14 +121,14 @@
                (x #,@(map *decl:formal (type:function-formals dcl-type)))]]
            [init #`[#,(*type dcl-type) x #,init]]
            [else #`[#,(*type dcl-type) x]]))))
-   (with-syntax ([(struct-def ...) struct-defs]
-                 [(storage-class ...) (if storage-class
-                                          (list (*id storage-class))
-                                          '())]
-                 [(declarator ...) declarator-stxs])
-     #'(begin
-         struct-def ...
-         (declare (storage-class ...) declarator ...)))]
+   (define declaration-stx
+     (with-syntax ([(storage-class ...) (if storage-class
+                                            (list (*id storage-class))
+                                            '())])
+       #`(declare (storage-class ...) #,@declarator-stxs)))
+   (if (null? struct-defs)
+       declaration-stx
+       #`(begin #,@struct-defs #,declaration-stx))]
   [(decl:function src storage-class inline? return-type declarator preamble body)
    ; TODO: preamble
    (let ([type (decl:declarator-type
