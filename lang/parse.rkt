@@ -27,17 +27,25 @@
         #,@(map *decl decls))]))
 
 (define-syntax-parameter this-node #f)
+(define-syntax-parameter this-src #f)
 
 (define-syntax-rule
   (define/match/wrap id
-    [(struct: src member ...) body ... stx-expr] ...)
+    [(struct: src member ...) body ...] ...)
   (define id
     (let ([id (λ (node)
                 (syntax-parameterize ([this-node (make-rename-transformer #'node)])
                   (match node
-                    [(struct: src member ...) body ... (src->syntax src stx-expr)] ...)))])
+                    [(struct: src member ...)
+                     (syntax-parameterize ([this-src (make-rename-transformer #'src)])
+                       body ...)]
+                    ...)))])
       (when DEBUG (trace id))
       id)))
+
+(define-syntax-rule
+  (quasisyntax/src template)
+  (quasisyntax/loc (src->syntax this-src 'here) template))
 
 ;; Identifiers
 
@@ -55,39 +63,40 @@
   [(expr:char src source wide?) (string-ref source 0)] ; TODO: multi-char constants
   [(expr:string src source wide?) source]
   ; TODO: compound, array-ref
-  [(expr:call src function arguments) #`(#%app #,(*expr function) #,@(map *expr arguments))]
-  [(expr:member src expr label) #`(|.| #,(*expr expr) #,(*id label))]
-  [(expr:pointer-member src expr label) #`(-> #,(*expr expr) #,(*id label))]
-  [(expr:postfix src expr op) (let ([op (*id op)]) #`(#,(format-id op "post~a" op) #,(*expr expr)))]
-  [(expr:prefix src op expr) (let ([op (*id op)]) #`(#,(format-id op "pre~a" op) #,(*expr expr)))]
-  [(expr:cast src type expr) #`(cast #,(*type type) #,(*expr expr))]
-  [(expr:sizeof src term) #`(sizeof #,(if (type? term) (*type term) (*expr term)))]
-  [(expr:unop src op expr) #`(#,(*id op) #,(*expr expr))]
-  [(expr:binop src left op right) #`(#,(*id op) #,(*expr left) #,(*expr right))]
-  [(expr:assign src left op right) #`(#,(*id op) #,(*expr left) #,(*expr right))]
-  [(expr:begin src left right) #`(|,| #,(*expr left) #,(*expr right))]
-  [(expr:if src test cons alt) #`(?: #,(*expr test) #,(*expr cons) #,(*expr alt))])
+  [(expr:call src function arguments) (quasisyntax/src (#%app #,(*expr function) #,@(map *expr arguments)))]
+  [(expr:member src expr label) (quasisyntax/src (|.| #,(*expr expr) #,(*id label)))]
+  [(expr:pointer-member src expr label) (quasisyntax/src (-> #,(*expr expr) #,(*id label)))]
+  [(expr:postfix src expr op) (let ([op (*id op)]) (quasisyntax/src (#,(format-id op "post~a" op) #,(*expr expr))))]
+  [(expr:prefix src op expr) (let ([op (*id op)]) (quasisyntax/src (#,(format-id op "pre~a" op) #,(*expr expr))))]
+  [(expr:cast src type expr) (quasisyntax/src (cast #,(*type type) #,(*expr expr)))]
+  [(expr:sizeof src term) (quasisyntax/src (sizeof #,(if (type? term) (*type term) (*expr term))))]
+  [(expr:unop src op expr) (quasisyntax/src (#,(*id op) #,(*expr expr)))]
+  [(expr:binop src left op right) (quasisyntax/src (#,(*id op) #,(*expr left) #,(*expr right)))]
+  [(expr:assign src left op right) (quasisyntax/src (#,(*id op) #,(*expr left) #,(*expr right)))]
+  [(expr:begin src left right) (quasisyntax/src (|,| #,(*expr left) #,(*expr right)))]
+  [(expr:if src test cons alt) (quasisyntax/src (?: #,(*expr test) #,(*expr cons) #,(*expr alt)))])
 
 ;; Statements
 
 (define/match/wrap *stmt
-  [(stmt:label src label stmt) #`(begin #:label #,(*id label) #,(*expr stmt))]
+  [(stmt:label src label stmt) (quasisyntax/src (begin #:label #,(*id label) #,(*expr stmt)))]
   ; TODO: case, default
-  [(stmt:block src items) #`(block #,@(map (λ (item) (if (decl? item) (*decl item) (*stmt item))) items))]
+  [(stmt:block src items) (quasisyntax/src (block #,@(map (λ (item) (if (decl? item) (*decl item) (*stmt item))) items)))]
   [(stmt:expr src expr) (*expr expr)]
-  [(stmt:if src test cons alt) #`(if #,(*expr test) #,(*stmt cons) #,@(if alt (list (*stmt alt)) '()))]
+  [(stmt:if src test cons alt) (quasisyntax/src (if #,(*expr test) #,(*stmt cons) #,@(if alt (list (*stmt alt)) '())))]
   ; TODO: switch
-  [(stmt:while src test body) #`(while #,(*expr test) #,(*stmt body))]
-  [(stmt:do src body test) #`(do #,(*stmt body) #,(*expr test))]
-  [(stmt:for src init test update body) #`(for (#,(cond [(expr? init) (*expr init)] [(decl? init) (*decl init)] [else #'()])
-                                                #,(if test (*expr test) #'())
-                                                #,(if update (*expr update) #'()))
-                                            #,(*stmt body))]
-  [(stmt:goto src label) #`(goto #,(*id label))]
-  [(stmt:continue src) #'(continue)]
-  [(stmt:break src) #'(break)]
-  [(stmt:return src result) #`(return #,@(if result (list (*expr result)) '()))]
-  [(stmt:empty src) #`(empty-statement)])
+  [(stmt:while src test body) (quasisyntax/src (while #,(*expr test) #,(*stmt body)))]
+  [(stmt:do src body test) (quasisyntax/src (do #,(*stmt body) #,(*expr test)))]
+  [(stmt:for src init test update body) (quasisyntax/src
+                                         (for (#,(cond [(expr? init) (*expr init)] [(decl? init) (*decl init)] [else #'()])
+                                               #,(if test (*expr test) #'())
+                                               #,(if update (*expr update) #'()))
+                                           #,(*stmt body)))]
+  [(stmt:goto src label) (quasisyntax/src (goto #,(*id label)))]
+  [(stmt:continue src) (quasisyntax/src (continue))]
+  [(stmt:break src) (quasisyntax/src (break))]
+  [(stmt:return src result) (quasisyntax/src (return #,@(if result (list (*expr result)) '())))]
+  [(stmt:empty src) (quasisyntax/src (empty-statement))])
 
 ;; Declarations
 
@@ -101,41 +110,47 @@
    ; TODO: similarly for anonymous structs
    (define struct-defs
      (match type
-       [(type:struct _ tag (? list? fields))
-        (list
-         #`(define-struct-type #,(*id tag)
-             (#,@(map *decl:member fields))))]
+       [(type:struct src tag (? list? fields))
+        (syntax-parameterize ([this-src (make-rename-transformer #'src)])
+          (list
+           (quasisyntax/src
+            (define-struct-type #,(*id tag)
+              (#,@(map *decl:member fields))))))]
        [_ '()]))
    (define declarator-stxs
      (for/list ([ctx (in-list declarators)])
        (define dcl (apply-declarator-context ctx type))
+       (define dcl-src (decl-src dcl))
        (define dcl-type (decl:declarator-type dcl))
        (define init
          (cond
            [(decl:declarator-initializer dcl) => *init]
            [else #f]))
        (with-syntax ([x (*id (decl:declarator-id dcl))])
-         (cond
-           [(type:function? dcl-type)
-            #`[#,(*type (type:function-return dcl-type))
-               (x #,@(map *decl:formal (type:function-formals dcl-type)))]]
-           [init #`[#,(*type dcl-type) x #,init]]
-           [else #`[#,(*type dcl-type) x]]))))
+         (syntax-parameterize ([this-src (make-rename-transformer #'dcl-src)])
+           (cond
+             [(type:function? dcl-type)
+              (quasisyntax/src
+               [#,(*type (type:function-return dcl-type))
+                (x #,@(map *decl:formal (type:function-formals dcl-type)))])]
+             [init (quasisyntax/src [#,(*type dcl-type) x #,init])]
+             [else (quasisyntax/src [#,(*type dcl-type) x])])))))
    (define declaration-stx
      (with-syntax ([(storage-class ...) (if storage-class
                                             (list (*id storage-class))
                                             '())])
-       #`(declare (storage-class ...) #,@declarator-stxs)))
+       (quasisyntax/src (declare (storage-class ...) #,@declarator-stxs))))
    (if (null? struct-defs)
        declaration-stx
-       #`(begin #,@struct-defs #,declaration-stx))]
+       (quasisyntax/src (begin #,@struct-defs #,declaration-stx)))]
   [(decl:function src storage-class inline? return-type declarator preamble body)
    ; TODO: preamble
    (let ([type (decl:declarator-type
                 (if (declarator-context? declarator)
                     (apply-declarator-context declarator return-type)
                     declarator))])
-     #`(function #,(map *id (filter values (list storage-class inline?)))
+     (quasisyntax/src
+       (function #,(map *id (filter values (list storage-class inline?)))
          #,(*type return-type)
          (#,(*id (decl:declarator-id declarator))
           #,@(map (λ (formal)
@@ -144,7 +159,7 @@
                         (*decl:formal formal)
                         (*id formal)))
                   (type:function-formals type)))
-         #,(*stmt body)))])
+         #,(*stmt body))))])
 
 (define/match/wrap *decl:formal
   [(decl:formal src storage-class type declarator)
@@ -156,14 +171,14 @@
          [id (if (decl:declarator? declarator)
                  (decl:declarator-id declarator)
                  #f)])
-     #`[#,(*type t) #,@(if id (list (*id id)) '())])])
+     (quasisyntax/src [#,(*type t) #,@(if id (list (*id id)) '())]))])
 
 (define/match/wrap *decl:member
   ; TODO: fully implement this
   [(decl:member src type declarators)
    (match declarators
      [(list (decl:member-declarator _ id #f #f #f))
-      #`[#,(*type type) #,(*id id)]])])
+      (quasisyntax/src [#,(*type type) #,(*id id)])])])
 
 ;; Initializers
 
@@ -177,19 +192,20 @@
 
 (define/match/wrap *type
   [(type:primitive src name)
-   (match name
-     [(or 'char 'short 'int 'long) name]
-     ['signed 'int]
-     ['unsigned '|unsigned int|]
-     [(list spec ... (or 'char 'int 'double '_Complex)) (string->symbol (string-join (map symbol->string name)))]
-     [(? list?) (string->symbol (string-join (append (map symbol->string name) "int")))]
-     [else name])]
+   (quasisyntax/src
+    #,(match name
+        [(or 'char 'short 'int 'long) name]
+        ['signed 'int]
+        ['unsigned '|unsigned int|]
+        [(list spec ... (or 'char 'int 'double '_Complex)) (string->symbol (string-join (map symbol->string name)))]
+        [(? list?) (string->symbol (string-join (append (map symbol->string name) "int")))]
+        [else name]))]
   ; TODO: ref
-  [(type:struct src tag #f) #| TODO: inline struct definitions |# #`(Struct #,(*id tag))]
+  [(type:struct src tag #f) #| TODO: inline struct definitions |# (quasisyntax/src (Struct #,(*id tag)))]
   ; TODO: union, enum, array
-  [(type:pointer src base qualifiers) #| TODO: qualifiers |# #`(Pointer #,(*type base))]
+  [(type:pointer src base qualifiers) #| TODO: qualifiers |# (quasisyntax/src (Pointer #,(*type base)))]
   [(type:function src return formals)
    ; TODO: formal storage classes
    (let ([formal-decls (map *decl:formal formals)])
-     (make-→ (*type return) formal-decls))]
+     (quasisyntax/src #,(make-→ (*type return) formal-decls)))]
   [(type:qualified src type qualifiers) #| TODO |# (*type type)])
