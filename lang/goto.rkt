@@ -7,17 +7,17 @@
          racket/undefined)
 
 (provide
- (for-syntax label)
  goto
+ label
  label-scope)
 
-(define-syntax-parameter goto
+(define-for-syntax (invalid-use)
   (λ (stx)
     (raise-syntax-error #f "invalid outside label-scope" stx)))
 
-(begin-for-syntax
-  (define-splicing-syntax-class label
-    (pattern (~seq #:label ~! id:id))))
+(define-syntax-parameter goto (invalid-use))
+
+(define-syntax label (invalid-use))
 
 (define-for-syntax introduce-label (make-syntax-introducer))
 
@@ -27,7 +27,7 @@
      (with-syntax ([top (introduce-label #'top)])
        (define def-ctx (syntax-local-make-definition-context))
        (define exp-ctx (list (gensym 'label-scope)))
-       (define stop-ids (list #'begin #'define-syntaxes #'define-values #'goto))
+       (define stop-ids (list #'begin #'define-syntaxes #'define-values #'goto #'label))
        (define-values (parts stx-defs var-defs)
          (let loop ([current-label #'top]
                     [forms #'(body ...)]
@@ -40,17 +40,9 @@
               (values (reverse (cons (list current-label (if (null? exprs) (list #'(void)) (reverse exprs))) parts))
                       (reverse stxs)
                       (reverse vars))]
-             [(label:label . rest)
-              (with-syntax ([next (introduce-label #'label.id)])
-                (loop #'next
-                      #'rest
-                      (cons (list current-label (reverse (cons #'(next) exprs))) parts)
-                      '()
-                      stxs
-                      vars))]
              [(form . rest)
               (syntax-parse (local-expand #'form exp-ctx stop-ids def-ctx)
-                #:literals (begin define-syntaxes define-values)
+                #:literals (begin define-syntaxes define-values label)
                 [(begin form ...)
                  (loop current-label
                        #'(form ... . rest)
@@ -77,6 +69,14 @@
                        (with-syntax ([(id ...) (map syntax-local-identifier-as-binding (attribute id))]
                                      [(v ...) (map (λ (id) #'undefined) (attribute id))])
                          (cons #'[(id ...) (values v ...)] vars)))]
+                [(label lbl-id:id)
+                 (with-syntax ([next (introduce-label #'lbl-id)])
+                   (loop #'next
+                         #'rest
+                         (cons (list current-label (reverse (cons #'(next) exprs))) parts)
+                         '()
+                         stxs
+                         vars))]
                 [_ (loop current-label #'rest parts (cons this-syntax exprs) stxs vars)])])))
        (define transformed-stx
          (with-syntax ([(stx-def ...) stx-defs]

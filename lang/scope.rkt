@@ -11,10 +11,12 @@
          "../link.rkt"
          (only-in "expression.rkt" [#%datum #%datum+])
          "goto.rkt"
-         "rep.rkt")
+         "keywords.rkt"
+         "rep.rkt"
+         (only-in "statement.rkt" expand-function-body))
 
 (provide (for-syntax declaration)
-         begin block declare function goto return translation-unit)
+         begin block declare function return translation-unit)
 
 (define-for-syntax DEBUG #f)
 
@@ -28,12 +30,6 @@
   (define-syntax-rule (call/trace proc arg ...)
     (if DEBUG (trace-call 'proc proc arg ...) (proc arg ...))))
 
-(define-for-syntax (make-invalid-use [msg "invalid use"])
-  (λ (stx)
-    (raise-syntax-error #f msg stx)))
-
-(define-syntax block (make-invalid-use))
-(define-syntax declare (make-invalid-use))
 (define-syntax-parameter return (make-invalid-use))
 
 (begin-for-syntax
@@ -182,10 +178,9 @@
   (syntax-parser
     [(_ (specifier:id ...) decl:function-decl
         ; TODO: old-style preamble
-        ((~literal block)
-         body ...))
+        body)
      (define def-ctx (syntax-local-make-definition-context))
-     (define stop-ids (list #'begin #'block #'declare #'goto #'return))
+     (define stop-ids (list #'begin #'block #'declare #'goto #'label #'return))
      (define-values (arg-spec arg-renamers)
        (cond
          [(attribute decl.arg)
@@ -211,23 +206,25 @@
                (values #`(#,@arg-ids . #,rest-arg) arg-renamers))]
          [else (values #'unspecified #'(begin))]))
      (define expanded-body
-       (let loop ([forms #'(body ...)]
+       (let loop ([forms #`(#,(expand-function-body #'body))]
                   [def-ctx def-ctx]
-                  [exp-ctx (list (gensym 'function))])
+                  [exp-ctx (list (gensym 'function))]
+                  [introduce-label (λ (stx) stx)])
          ; TODO: can we combine some of this scope logic with translation-unit?
          (syntax-parse forms
            [() '()]
-           [(lbl:label rest ...)
-            ; Labels get passed on to label-scope
-            (append (syntax->list #'lbl) (loop #'(rest ...) def-ctx exp-ctx))]
            [(form rest ...)
             (append
              (syntax-parse (call/trace local-expand #'form exp-ctx stop-ids def-ctx)
                [((~literal begin) ~! form ...)
-                (loop #'(form ...) def-ctx exp-ctx)]
+                (loop #'(form ...) def-ctx exp-ctx introduce-label)]
                [((~literal block) ~! form ...)
-                (let ([def-ctx (syntax-local-make-definition-context def-ctx)])
-                  (loop #'(form ...) def-ctx (cons (gensym 'block) exp-ctx)))]
+                (let* ([def-ctx (syntax-local-make-definition-context def-ctx)]
+                       [introduce-label (λ (stx) (internal-definition-context-introduce def-ctx (introduce-label stx)))])
+                  (loop #'(form ...) def-ctx (cons (gensym 'block) exp-ctx) introduce-label))]
+               [((~literal label) . _)
+                ;; Flatten label scopes so that we can jump into blocks
+                (list (introduce-label this-syntax))]
                [decl:declaration
                 (define specifiers (map syntax-e (attribute decl.specifier)))
                 (define static? (memq 'static specifiers))
@@ -268,7 +265,7 @@
                [((~or (~literal define-syntaxes) (~literal define-values)) . _)
                 (raise-syntax-error #f "not allowed here" this-syntax)]
                [_ (list this-syntax)])
-             (loop #'(rest ...) def-ctx exp-ctx))])))
+             (loop #'(rest ...) def-ctx exp-ctx introduce-label))])))
      (define λ-stx
        (internal-definition-context-track
         def-ctx

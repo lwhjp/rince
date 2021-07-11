@@ -79,7 +79,7 @@
 ;; Statements
 
 (define/match/wrap *stmt
-  [(stmt:label src label stmt) (quasisyntax/src (begin #:label #,(*id label) #,(*stmt stmt)))]
+  [(stmt:label src label stmt) (quasisyntax/src (begin (label #,(*id label)) #,(*stmt stmt)))]
   ; TODO: case, default
   [(stmt:block src items) (quasisyntax/src (block #,@(map (λ (item) (if (decl? item) (*decl item) (*stmt item))) items)))]
   [(stmt:expr src expr) (*expr expr)]
