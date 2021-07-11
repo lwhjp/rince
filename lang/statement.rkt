@@ -43,15 +43,16 @@
 (define-for-syntax/debug-trace (expand-statement stx)
   (define (track new-stx) (syntax-track-origin new-stx stx (stx-car stx)))
   (syntax-parse stx
-    [((~literal c:break))
+    #:literals (c:break c:continue c:do c:for c:if c:while begin block)
+    [(c:break)
      (track
       #`(goto #,(or (current-break-label)
                     (raise-syntax-error #f "break outside of switch or loop" this-syntax))))]
-    [((~literal c:continue))
+    [(c:continue)
      (track
       #`(goto #,(or (current-continue-label)
                     (raise-syntax-error #f "continue outside of loop" this-syntax))))]
-    [((~literal c:do) body predicate)
+    [(c:do body predicate)
      (with-syntax ([loop (generate-temporary 'do)]
                    [test (generate-temporary 'test)]
                    [end (generate-temporary 'end)])
@@ -64,10 +65,10 @@
               (label test)
               (unless (zero? (ensure-scalar predicate)) (goto loop))
               (label end)))))]
-    [((~literal c:for) ((~or () init)
-                        (~or () predicate)
-                        (~or () step))
-                       body)
+    [(c:for ((~or () init)
+             (~or () predicate)
+             (~or () step))
+       body)
      (with-syntax ([loop (generate-temporary 'for)]
                    [next (generate-temporary 'next)]
                    [end (generate-temporary 'end)])
@@ -83,14 +84,14 @@
              (~? step)
              (goto loop)
              (label end)))))]
-    [((~literal c:if) predicate consequent)
+    [(c:if predicate consequent)
      (with-syntax ([endif (generate-temporary 'endif)])
        (track
         #`(begin
             (when (zero? (ensure-scalar predicate)) (goto endif))
             #,(expand-statement #'consequent)
             (label endif))))]
-    [((~literal c:if) predicate consequent alternate)
+    [(c:if predicate consequent alternate)
      (with-syntax ([else (generate-temporary 'else)]
                    [endif (generate-temporary 'endif)])
        (track
@@ -101,7 +102,7 @@
             (label else)
             #,(expand-statement #'alternate)
             (label endif))))]
-    [((~literal c:while) predicate body)
+    [(c:while predicate body)
      (with-syntax ([loop (generate-temporary 'while)]
                    [end (generate-temporary 'end)])
        (parameterize ([current-break-label #'end]
@@ -113,8 +114,10 @@
               #,(expand-statement #'body)
               (goto loop)
               (label end)))))]
-    [((~or (~literal begin) (~literal block)) item ...)
+    [((~or begin block) item ...)
      ; item could also be a declaration, but that will just pass through as-is
-     (track #`(#,(stx-car this-syntax) #,@(stx-map expand-statement #'(item ...))))]
+     (track
+      #`(#,(stx-car this-syntax)
+         #,@(map expand-statement (attribute item))))]
     ; otherwise it's an expression
     [_ this-syntax]))
