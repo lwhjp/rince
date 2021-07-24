@@ -2,14 +2,16 @@
 
 ;; Typed C expressions
 
-(extends "derived-types.rkt")
+(extends "types.rkt")
 
 (require (for-syntax racket/list
                      racket/match)
+         "convert-type.rkt"
          "rep.rkt")
 
 (provide
- (rename-out [#%app+ #%app])
+ (rename-out [#%app+ #%app]
+             [#%datum+ #%datum])
  |.| post++ post--
  pre++ pre-- ~ ! sizeof cast
  * / % + -  << >> & ^ \|
@@ -26,7 +28,30 @@
  static-initializer
  unspecified-initializer)
 
-(define-syntax-rule (#%datum+ . d) (derived-types:#%datum . d))
+; TODO: suffixes, different default signedness for decimal/hex/octal
+(define-typed-syntax #%datum+
+  [(_ . n:exact-integer) ≫
+   ; all our non-short int types are 64-bit for now.
+   #:with (n^ τ)
+   (if (>= (integer-length (syntax-e #'n)) 64)
+       (list #'(constrain-integer/unsigned '64 'n) #'|unsigned int|)
+       (list #'(constrain-integer/signed '64 'n) #'int))
+   --------
+   [⊢ n^ ⇒ τ]]
+  [(_ . f) ≫
+   #:when (flonum? (syntax-e #'f))
+   --------
+   [⊢ 'f ⇒ double]]
+  [(_ . c:char) ≫
+   --------
+   [⊢ (char->integer 'c) ⇒ int]]
+  [(_ . s:string) ≫
+   #:with cs (list->vector `(,@(bytes->list (string->bytes/latin-1 (syntax-e #'s))) 0))
+   --------
+   [⊢ (array 'cs '1) ⇒ (Array char)]]
+  [(_ . d) ≫
+   --------
+   [#:error (type-error #:src #'d #:msg "unsupported literal")]])
 
 (define-typed-syntax (__ensure-arithmetic e) ≫
   [⊢ e ≫ e- ⇒ τ]
