@@ -1,6 +1,4 @@
-#lang turnstile/base
-
-(extends "expression.rkt")
+#lang racket/base
 
 (require (for-syntax racket/list
                      racket/match
@@ -8,15 +6,26 @@
                      syntax/id-table
                      syntax/intdef)
          racket/stxparam
+         turnstile/base
          "../link.rkt"
-         (only-in "expression.rkt" [#%datum #%datum+])
+         (only-in "expression.rkt"
+                  [#%datum #%datum+]
+                  →?
+                  unspecified→?
+                  cast
+                  function-decl
+                  function-return-type
+                  function-type?
+                  initializer
+                  static-initializer
+                  unspecified-initializer)
          "goto.rkt"
          "keywords.rkt"
          "rep.rkt"
          (only-in "statement.rkt" expand-function-body))
 
 (provide (for-syntax declaration)
-         begin block declare function return translation-unit)
+         block declare function return translation-unit)
 
 (define-for-syntax DEBUG #f)
 
@@ -295,7 +304,10 @@
 ;; Tests
 
 (module+ test
-  (require (only-in "expression.rkt" #%datum))
+  (require (only-in "expression.rkt"
+                    #%datum
+                    int
+                    void))
 
   (translation-unit
    (declare () [int x 10])

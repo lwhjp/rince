@@ -1,12 +1,19 @@
 #lang turnstile/base
 
-(extends "scope.rkt")
+(extends "expression.rkt")
 
-(require "statement.rkt")
+(require "scope.rkt"
+         "statement.rkt")
 
 (provide
+ begin
+ block
+ declare
+ function
  label
  null-statement
+ return
+ translation-unit
  (rename-out
   [c:break break]
   [c:continue continue]
