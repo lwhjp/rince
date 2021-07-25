@@ -84,6 +84,9 @@
      [(not (and new-defined? old-defined?)) (or new-defined? old-defined?)]
      [else (raise-syntax-error #f "multiple definitions" stx)])))
 
+(define-for-syntax (make-typed-variable-renamer untyped-id type)
+  (make-variable-like-transformer (assign-type untyped-id type)))
+
 (define-syntax/trace translation-unit
   (syntax-parser
     [(_ top-decl ...)
@@ -95,67 +98,64 @@
      ; Expand, process declarations and collect lifts
      (define expanded-forms
        (let loop ([forms (attribute top-decl)])
-         (if (null? forms)
-             '()
-             (syntax-parse (call/trace local-expand/capture-lifts (car forms) exp-ctx stop-ids def-ctx lift-ctx)
-               [((~literal begin) lift ... expanded-form)
-                (append
-                 (attribute lift)
-                 (syntax-parse #'expanded-form
-                   [((~literal begin) ~! subform ...) (loop (attribute subform))]
-                   [decl:declaration
-                    (define specifiers (map syntax-e (attribute decl.specifier)))
-                    (filter-map
-                     (λ (x τ init-v)
-                       (define function? (function-type? τ))
-                       (define old-info (bound-id-table-ref declared-vars x #f))
-                       (define obj-id
-                         (or (and old-info (declared-var-object-id old-info))
-                             (with-syntax ([x- (internal-definition-context-introduce def-ctx (generate-temporary x))])
-                               (syntax-local-bind-syntaxes (list #'x-) #f def-ctx)
-                               #'x-)))
-                       (define info
-                         (let ([new-info
-                                (declared-var
-                                 (cond
-                                   [(memq 'static specifiers) 'static]
-                                   [(memq 'extern specifiers) 'extern]
-                                   [function? 'extern]
-                                   [else #f])
-                                 τ
-                                 obj-id
-                                 (and init-v #t))])
-                           (if old-info
-                               (combine-declarations x new-info old-info)
-                               new-info)))
-                       (bound-id-table-set! declared-vars x info)
-                       (define renamer-defs
+         (append-map
+          (λ (form)
+            (syntax-parse (call/trace local-expand/capture-lifts form exp-ctx stop-ids def-ctx lift-ctx)
+              [((~literal begin) lift ... expanded-form)
+               (append
+                (attribute lift)
+                (syntax-parse #'expanded-form
+                  [((~literal begin) ~! subform ...) (loop (attribute subform))]
+                  [decl:declaration
+                   (define specifiers (map syntax-e (attribute decl.specifier)))
+                   (for/list ([id (in-list (attribute decl.x))]
+                              [τ (in-list (map (current-type-eval) (attribute decl.τ)))]
+                              [v (in-list (attribute decl.v))])
+                     (define function? (function-type? τ))
+                     (define old-info (bound-id-table-ref declared-vars id #f))
+                     (define obj-id
+                       (or (and old-info (declared-var-object-id old-info))
+                           (with-syntax ([x- (internal-definition-context-introduce def-ctx (generate-temporary id))])
+                             (syntax-local-bind-syntaxes (list #'x-) #f def-ctx)
+                             #'x-)))
+                     (define info
+                       (let ([new-info
+                              (declared-var
+                               (cond
+                                 [(memq 'static specifiers) 'static]
+                                 [(memq 'extern specifiers) 'extern]
+                                 [function? 'extern]
+                                 [else #f])
+                               τ
+                               obj-id
+                               (and v #t))])
                          (if old-info
-                             '() ; already declared
-                             (with-syntax ([x- obj-id]
-                                           [x+ (syntax-local-identifier-as-binding x)])
-                               (define renamer-target
-                                 (if function? #'x- #'(variable-reference . x-)))
-                               (define type-renamer
-                                 #`(make-variable-like-transformer
-                                    (assign-type #'#,renamer-target #'#,τ)))
-                               (syntax-local-bind-syntaxes (list #'x+) type-renamer def-ctx)
-                               (list #`(define-syntax x+ #,type-renamer)))))
-                       (define def
-                         (with-syntax ([x- obj-id])
-                           (cond
-                             [(not init-v) #f]
-                             [function? #`(define x- #,init-v)]
-                             [else #`(define x- (make-variable (cast #,τ #,init-v)))])))
-                       #`(begin #,@renamer-defs #,@(cond [def => list] [else '()])))
-                     (attribute decl.x)
-                     (map (current-type-eval) (attribute decl.τ))
-                     (attribute decl.v))]
-                   [((~literal define-syntaxes) (id ...) expr)
-                    (syntax-local-bind-syntaxes (attribute id) #'expr def-ctx)
-                    (list #`(define-syntaxes #,(map syntax-local-identifier-as-binding (attribute id)) expr))]
-                   [_ (raise-syntax-error #f "expected declaration" this-syntax)])
-                 (loop (cdr forms)))]))))
+                             (combine-declarations id new-info old-info)
+                             new-info)))
+                     (bound-id-table-set! declared-vars id info)
+                     (define renamer-def
+                       (if old-info
+                           #f ; already declared
+                           (with-syntax* ([x- obj-id]
+                                          [x+ (syntax-local-identifier-as-binding id)]
+                                          [renamer #`(make-typed-variable-renamer
+                                                      #'#,(if function? #'x- #'(variable-reference . x-))
+                                                      #'#,τ)])
+                             (syntax-local-bind-syntaxes (list #'x+) #'renamer def-ctx)
+                             #'(define-syntax x+ renamer))))
+                     (define def
+                       (with-syntax ([x- obj-id])
+                         (cond
+                           [(not v) #f]
+                           [function? #`(define x- #,v)]
+                           [else #`(define x- (make-variable (initializer #,τ #,v)))])))
+                     (with-syntax ([(def ...) (filter values (list renamer-def def))])
+                       #'(begin def ...)))]
+                  [((~literal define-syntaxes) (id ...) expr)
+                   (syntax-local-bind-syntaxes (attribute id) #'expr def-ctx)
+                   (list #`(define-syntaxes #,(map syntax-local-identifier-as-binding (attribute id)) expr))]
+                  [_ (raise-syntax-error #f "expected declaration" this-syntax)]))]))
+          forms)))
      (define tentative-definitions
        (for/list ([(id info) (in-bound-id-table declared-vars)]
                   #:when (and (not (declared-var-defined? info))
@@ -165,7 +165,7 @@
           id
           (struct-copy declared-var info [defined? #t]))
          #`(define #,(declared-var-object-id info)
-             (make-variable (cast #,(declared-var-type info) (#%datum+ . 0))))))
+             (make-variable (static-initializer #,(declared-var-type info))))))
      (define extern-ids
        (filter
         values
@@ -205,8 +205,7 @@
                                   #:when arg+)
                          (list arg- (generate-temporary arg+) (internal-definition-context-introduce def-ctx arg+) τ))])
                    (define renamers
-                     #'(values (make-variable-like-transformer
-                                (assign-type #'(variable-reference . arg^) #'τ)) ...))
+                     #'(values (make-typed-variable-renamer #'(variable-reference . arg^) #'τ) ...))
                    (syntax-local-bind-syntaxes (syntax->list #'(arg^ ...)) #f def-ctx)
                    (syntax-local-bind-syntaxes (syntax->list #'(arg+ ...)) renamers def-ctx)
                    #`(begin
@@ -215,66 +214,58 @@
                (values #`(#,@arg-ids . #,rest-arg) arg-renamers))]
          [else (values #'unspecified #'(begin))]))
      (define expanded-body
-       (let loop ([forms #`(#,(expand-function-body #'body))]
+       (let loop ([forms (list (expand-function-body #'body))]
                   [def-ctx def-ctx]
                   [exp-ctx (list (gensym 'function))]
                   [introduce-label (λ (stx) stx)])
          ; TODO: can we combine some of this scope logic with translation-unit?
-         (syntax-parse forms
-           [() '()]
-           [(form rest ...)
-            (append
-             (syntax-parse (call/trace local-expand #'form exp-ctx stop-ids def-ctx)
-               [((~literal begin) ~! form ...)
-                (loop #'(form ...) def-ctx exp-ctx introduce-label)]
-               [((~literal block) ~! form ...)
-                (let* ([def-ctx (syntax-local-make-definition-context def-ctx)]
-                       [introduce-label (λ (stx) (internal-definition-context-introduce def-ctx (introduce-label stx)))])
-                  (loop #'(form ...) def-ctx (cons (gensym 'block) exp-ctx) introduce-label))]
-               [((~literal label) . _)
-                ;; Flatten label scopes so that we can jump into blocks
-                (list (introduce-label this-syntax))]
-               [decl:declaration
-                (define specifiers (map syntax-e (attribute decl.specifier)))
-                (define static? (memq 'static specifiers))
-                (cond
-                  [(memq 'extern specifiers)
-                   ; TODO: handle external-linkage externs
-                   ; TODO: (extern) function declarations
-                   '()]
-                  [else
-                   (for/list ([id (in-list (attribute decl.x))]
-                              [τ (in-list (map (current-type-eval) (attribute decl.τ)))]
-                              [v (in-list (attribute decl.v))])
-                     (define init-expr
-                       #`(make-variable
-                          #,(cond
-                              [v #`(initializer #,τ #,v)]
-                              [static? #`(static-initializer #,τ)]
-                              [else #`(unspecified-initializer #,τ)])))
-                     (define obj-id
-                       (if static?
-                           (syntax-local-lift-expression init-expr)
-                           (begin
-                             (with-syntax ([x- (internal-definition-context-introduce def-ctx (generate-temporary id))])
-                               (syntax-local-bind-syntaxes (list #'x-) #f def-ctx)
-                               #'x-))))
-                     (with-syntax ([x- obj-id]
-                                   [x+ (syntax-local-identifier-as-binding id)])
-                       ; FIXME: this duplicates translation-unit
-                       (define type-renamer
-                         #`(make-variable-like-transformer
-                            (assign-type #'(variable-reference . x-) #'#,τ)))
-                       (syntax-local-bind-syntaxes (list #'x+) type-renamer def-ctx)
-                       #`(begin
-                           (define-syntax x+ #,type-renamer)
-                           #,@(if static?
-                                  '()
-                                  (list #`(define x- #,init-expr))))))])]
-               [((~or (~literal define-syntaxes) (~literal define-values)) . _)
-                (raise-syntax-error #f "not allowed here" this-syntax)]
-               [_ (list this-syntax)])
-             (loop #'(rest ...) def-ctx exp-ctx introduce-label))])))
+         (append-map
+          (λ (form)
+            (syntax-parse (call/trace local-expand form exp-ctx stop-ids def-ctx)
+              #:literals (begin block define-syntaxes define-values label)
+              [(begin form ...)
+               (loop (attribute form) def-ctx exp-ctx introduce-label)]
+              [(block form ...)
+               (let* ([def-ctx (syntax-local-make-definition-context def-ctx)]
+                      [introduce-label (λ (stx) (internal-definition-context-introduce def-ctx (introduce-label stx)))])
+                 (loop (attribute form) def-ctx (cons (gensym 'block) exp-ctx) introduce-label))]
+              [(label . _)
+               ;; Flatten label scopes so that we can jump into blocks
+               (list (introduce-label this-syntax))]
+              [decl:declaration
+               (define specifiers (map syntax-e (attribute decl.specifier)))
+               (define static? (memq 'static specifiers))
+               (cond
+                 [(memq 'extern specifiers)
+                  ; TODO: handle external-linkage externs
+                  ; TODO: (extern) function declarations
+                  '()]
+                 [else
+                  (for/list ([id (in-list (attribute decl.x))]
+                             [τ (in-list (map (current-type-eval) (attribute decl.τ)))]
+                             [v (in-list (attribute decl.v))])
+                    (define init-expr
+                     (cond
+                       [v #`(initializer #,τ #,v)]
+                       [static? #`(static-initializer #,τ)]
+                       [else #`(unspecified-initializer #,τ)]))
+                    (with-syntax* ([x- (internal-definition-context-introduce def-ctx (generate-temporary id))]
+                                   [x+ (syntax-local-identifier-as-binding id)]
+                                   [renamer #`(make-typed-variable-renamer #'(variable-reference . x-) #'#,τ)]
+                                   [init-v (let ([make-var #`(make-variable #,init-expr)])
+                                             (if static?
+                                                 (syntax-local-lift-expression make-var)
+                                                 (begin
+                                                   (syntax-local-bind-syntaxes (list #'x-) #f def-ctx)
+                                                   make-var)))])
+                      (syntax-local-bind-syntaxes (list #'x+) #'renamer def-ctx)
+                      #'(begin
+                          (define x- init-v)
+                          (define-syntax x+ renamer))))])]
+              [((~or define-syntaxes define-values) . _)
+               (raise-syntax-error #f "not allowed here" this-syntax)]
+              [_ (list this-syntax)]))
+          forms)))
      (define λ-stx
        (internal-definition-context-track
         def-ctx
