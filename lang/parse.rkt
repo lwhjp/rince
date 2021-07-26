@@ -8,7 +8,8 @@
          racket/syntax
          racket/trace
          c/ast
-         c/parse)
+         c/parse
+         "cpp.rkt")
 
 (provide c->racket)
 
@@ -16,7 +17,7 @@
 
 ; TODO: preprocessor directives (need to hack it until c-utils supports them)
 (define (c->racket in [source-name #f])
-  (*program (parse-program in #:source source-name)))
+  (*program (parse-program (preprocess in) #:source source-name)))
 
 (when DEBUG (trace c->racket))
 
