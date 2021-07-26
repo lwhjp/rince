@@ -1,3 +1,4 @@
+// expected: 3
 int f(int x, ...)
 {
     return x;

@@ -1,3 +1,4 @@
+// expected: 4
 int main(void)
 {
     const char *str = "test";

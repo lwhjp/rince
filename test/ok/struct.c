@@ -1,3 +1,4 @@
+// expected: 1
 struct foo {
     int x;
     int y;
