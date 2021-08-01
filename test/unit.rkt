@@ -3,6 +3,7 @@
 (require racket/runtime-path
          rackunit
          "../compile.rkt"
+         "../libc.rkt"
          "../link.rkt")
 
 (define-runtime-path test-files:ok "ok")
@@ -16,7 +17,7 @@
            => (λ (m) (string->number (cadr m)))]
           [else 0]))))
   (define obj (compile file))
-  (define proc (linkable->executable obj))
+  (define proc (link/executable (list obj) (list libc)))
   (check-equal? (proc) expected))
 
 (define test-suite:ok

@@ -179,7 +179,7 @@
      (define symtable
        (for/fold ([symtable ext-symtable])
                  ([sym (in-list internal-symbols)])
-         (hash-set symtable (box #f))))
+         (hash-set symtable sym (box #f))))
      (for ([object (in-list objects)])
        (match-define (linkable imports exports go) object)
        (apply go (map (λ (sym) (hash-ref symtable sym))
