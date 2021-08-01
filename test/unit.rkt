@@ -23,7 +23,8 @@
 (define test-suite:ok
   (test-suite
    "Compile and run unit tests (expected success)"
-   (for ([file (in-directory test-files:ok)])
+   (for ([file (in-directory test-files:ok)]
+         #:when (regexp-match? #rx"\\.c$" file))
      (test-case
       (path->string file)
       (check-compile+run file)))))
