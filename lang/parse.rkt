@@ -63,7 +63,8 @@
   [(expr:float src value qualifiers) value]
   [(expr:char src source wide?) (string-ref source 0)] ; TODO: multi-char constants
   [(expr:string src source wide?) source]
-  ; TODO: compound, array-ref
+  ; TODO: compound
+  [(expr:array-ref src expr offset) (quasisyntax/src (|[]| #,(*expr expr) #,(*expr offset)))]
   [(expr:call src function arguments) (quasisyntax/src (#%app #,(*expr function) #,@(map *expr arguments)))]
   [(expr:member src expr label) (quasisyntax/src (|.| #,(*expr expr) #,(*id label)))]
   [(expr:pointer-member src expr label) (quasisyntax/src (-> #,(*expr expr) #,(*id label)))]
@@ -184,8 +185,8 @@
 ;; Initializers
 
 (define/match/wrap *init
-  ; TODO: compound
-  [(init:expr src expr) (*expr expr)])
+  [(init:compound src elements) (quasisyntax/src (compound-initializer #,@(map *init elements)))]
+  [(init:expr src expr) (quasisyntax/src (initializer #,(*expr expr)))])
 
 ;; Designators
 
@@ -203,7 +204,10 @@
         [else name]))]
   ; TODO: ref
   [(type:struct src tag #f) #| TODO: inline struct definitions |# (quasisyntax/src (Struct #,(*id tag)))]
-  ; TODO: union, enum, array
+  ; TODO: union, enum
+  [(type:array src base static? qualifiers length star?)
+   (let ([len (if length (*expr length) #'#f)])
+     (quasisyntax/src (Array #,(*type base) #,len)))]
   [(type:pointer src base qualifiers) #| TODO: qualifiers |# (quasisyntax/src (Pointer #,(*type base)))]
   [(type:function src return formals)
    ; TODO: formal storage classes

@@ -12,7 +12,7 @@
 (provide
  (rename-out [#%app+ #%app]
              [#%datum+ #%datum])
- |.| post++ post--
+ |[]| |.| post++ post--
  pre++ pre-- ~ ! sizeof cast
  * / % + -  << >> & ^ \|
  < > <= >= == !=
@@ -25,6 +25,8 @@
  __zero?
  ; FIXME: these should not be valid C names
  initializer
+ compound-initializer
+ apply-initializer
  static-initializer
  unspecified-initializer)
 
@@ -47,8 +49,9 @@
    [⊢ (char->integer 'c) ⇒ int]]
   [(_ . s:string) ≫
    #:with cs (list->vector `(,@(bytes->list (string->bytes/latin-1 (syntax-e #'s))) 0))
+   #:with len (add1 (string-length (syntax-e #'s)))
    --------
-   [⊢ (array 'cs '1) ⇒ (Array char)]]
+   [⊢ (array 'cs '1) ⇒ (Array char len)]]
   [(_ . d) ≫
    --------
    [#:error (type-error #:src #'d #:msg "unsupported literal")]])
@@ -102,7 +105,7 @@
 
 ;; Postfix operators
 
-; TODO: array subscript
+(define-syntax-rule (|[]| e1 e2) (* (+ e1 e2)))
 
 (define-typed-syntax (#%app+ f arg ...) ≫
   [⊢ f ≫ f- ⇒ τ_f]
@@ -164,10 +167,16 @@
   --------
   [⊢ (lvalue->pointer v-) ⇒ (Pointer τ)])
 
-(define-typed-syntax (unary* v) ≫
-  [⊢ v ≫ v- ⇒ (~Pointer τ)]
-  --------
-  [⊢ (pointer-dereference v-) ⇒ τ])
+(define-typed-syntax unary*
+  [(_ v) ≫
+   [⊢ v ≫ v- ⇒ τ]
+   #:when (Array? #'τ)
+   -------
+   [≻ (unary* (decay-array v))]]
+  [(_ v) ≫
+   [⊢ v ≫ v- ⇒ (~Pointer τ)]
+   --------
+   [⊢ (pointer-dereference v-) ⇒ τ]])
 
 (define-typed-syntax (unary+ v) ≫
   [⊢ v ≫ v- ⇒ τ_v]
@@ -268,6 +277,8 @@
     [(and (arithmetic-type? #'τ_x) (arithmetic-type? #'τ_y))
      (with-syntax ([τ (common-real-type #'τ_x #'τ_y)])
        (assign-type #'(constrain-value τ (+- (cast τ x) (cast τ y))) #'τ))]
+    [(Array? #'τ_x) #'(binary+ (decay-array x) y)]
+    [(Array? #'τ_y) #'(binary+ x (decay-array y))]
     [(and (Pointer? #'τ_x) (integer-type? #'τ_y))
      (assign-type #'(pointer-inc x- y-) #'τ_x)]
     [(and (Pointer? #'τ_y) (integer-type? #'τ_x))
@@ -284,6 +295,8 @@
     [(and (arithmetic-type? #'τ_x) (arithmetic-type? #'τ_y))
      (with-syntax ([τ (common-real-type #'τ_x #'τ_y)])
        (assign-type #'(constrain-value τ (-- (cast τ x) (cast τ y))) #'τ))]
+    [(Array? #'τ_x) #'(binary+ (decay-array x) y)]
+    [(Array? #'τ_y) #'(binary+ x (decay-array y))]
     [(and (Pointer? #'τ_x) (integer-type? #'τ_y))
      (assign-type #'(pointer-inc x- (-- y-)) #'τ_x)]
     [(and (Pointer? #'τ_x) (type=? #'τ_x #'τ_y))
@@ -417,13 +430,42 @@
 ;; Initializers
 
 (define-syntax initializer
+  (λ (stx) (raise-syntax-error #f "invalid use" stx)))
+
+(define-syntax compound-initializer
+  (λ (stx) (raise-syntax-error #f "invalid use" stx)))
+
+;; Helpers
+;; TODO: move these somewhere else
+
+(define-syntax apply-initializer
   (syntax-parser
-    [(_ τ v)
+    #:literals (initializer compound-initializer)
+    [(_ τ:type (~or (compound-initializer (initializer v:string))
+                    (initializer v:string)))
+     #:with (~Array base len) #'τ.norm
+     (with-syntax ([(c ...) `(,@(bytes->list (string->bytes/latin-1 (syntax-e #'v))) 0)])
+       #'(apply-initializer τ (compound-initializer (#%datum+ . c) ...)))]
+    [(_ τ:type (compound-initializer v ...))
+     #:with (~Array base len) #'τ.norm
+     (with-syntax ([(e ...) (let* ([vs (attribute v)]
+                                   [decl-len (syntax-e #'len)]
+                                   [init-len (length vs)]
+                                   [len (or decl-len init-len)])
+                              (for/list ([i (in-range len)]
+                                         [v (in-sequences (in-list vs)
+                                                          (in-cycle (in-value #'(static-initializer base))))])
+                                v))])
+       #'(array (vector (apply-initializer base e) ...) (sizeof base)))]
+    ; TODO: struct
+    [(_ τ:type (compound-initializer v))
+     #'(apply-initializer τ v)]
+    [(_ τ:type (~or (initializer v) v))
      #'(cast τ v)]))
 
 (define-syntax unspecified-initializer
   (syntax-parser
-    [(_ (~Array dims)) (error 'TODO)]
+    [(_ (~Array base len)) #'(array (make-vector len 'unspecified) (sizeof base))]
     [(_ (~Struct tag))
      (with-syntax ([((f . τ_e) ...) (struct-tag->info #'tag)])
        #'(vector (unspecified-initializer τ_e) ...))]
@@ -431,4 +473,6 @@
 
 (define-syntax static-initializer
   (syntax-parser
+    [(_ (~Array base len)) #'(array (build-vector len (λ (i) (static-initializer base))) (sizeof base))]
+    ; TODO: struct
     [(_ τ) #'(cast τ (#%datum+ . 0))]))

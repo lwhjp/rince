@@ -16,7 +16,7 @@
                   function-decl
                   function-return-type
                   function-type?
-                  initializer
+                  apply-initializer
                   static-initializer
                   unspecified-initializer)
          "goto.rkt"
@@ -148,7 +148,7 @@
                          (cond
                            [(not v) #f]
                            [function? #`(define x- #,v)]
-                           [else #`(define x- (make-variable (initializer #,τ #,v)))])))
+                           [else #`(define x- (make-variable (apply-initializer #,τ #,v)))])))
                      (with-syntax ([(def ...) (filter values (list renamer-def def))])
                        #'(begin def ...)))]
                   [((~literal define-syntaxes) (id ...) expr)
@@ -246,7 +246,7 @@
                              [v (in-list (attribute decl.v))])
                     (define init-expr
                      (cond
-                       [v #`(initializer #,τ #,v)]
+                       [v #`(apply-initializer #,τ #,v)]
                        [static? #`(static-initializer #,τ)]
                        [else #`(unspecified-initializer #,τ)]))
                     (with-syntax* ([x- (internal-definition-context-introduce def-ctx (generate-temporary id))]

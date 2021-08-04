@@ -14,7 +14,8 @@
              common-real-type
              usual-arithmetic-conversion-types
              make-conversion)
- constrain-value)
+ constrain-value
+ decay-array)
 
 (define-for-syntax integer-conversion-ranks
   (list
@@ -127,3 +128,10 @@
   (define crt (common-real-type τ1 τ2))
   ; TODO: complex
   (values crt crt crt))
+
+(define-typed-syntax (decay-array v) ≫
+  [⊢ v ≫ v- ⇒ (~Array τ_e _)]
+  #:with τ^ #'(Pointer τ_e)
+  #:with v^ #'(array->pointer v-)
+  --------
+  [⊢ v^ ⇒ τ^])

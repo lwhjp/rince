@@ -1,6 +1,9 @@
-#lang turnstile/base
+#lang racket/base
 
-(require "rep.rkt")
+(require (for-meta 2 racket/base)
+         syntax/parse
+         turnstile/base
+         "rep.rkt")
 
 (provide
  (type-out _Bool
@@ -16,11 +19,13 @@
            float double |long double|
            ;|float _Complex| |double _Complex| |long double _Complex|
            void
-           Array
            →
            unspecified→
            args...
            Pointer)
+ (rename-out [Array* Array])
+ (for-syntax Array?
+             (rename-out [~Array* ~Array]))
  (except-out (type-out Struct) Struct)
  (rename-out [Struct* Struct])
  (for-syntax signed-integer-type?
@@ -201,9 +206,26 @@
 
 ; Arrays
 
-; TODO: store array size (for multidim arrays)
 (define-type-constructor Array
-  #:arity = 1)
+  #:arity = 2)
+
+; TODO: there *must* be a nicer way of doing this
+(define-syntax Array*
+  (syntax-parser
+    [(_ base:type len)
+     (with-syntax ([len/τ (mk-type #'(#%plain-app list 'len))])
+       #'(Array base len/τ))]))
+
+(begin-for-syntax
+  (define-syntax ~Array*
+    (pattern-expander
+     (λ (stx)
+       (syntax-case stx ()
+         [(_ base len)
+          #'(~Array base
+                    ((~literal #%plain-app)
+                     (~literal list)
+                     ((~literal quote) len)))])))))
 
 ; Structs
 
