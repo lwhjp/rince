@@ -127,11 +127,20 @@
      (with-syntax ([(τ_fixed ...) fixed-arg-types]
                    [(fixed-arg ...) fixed-args]
                    [(extra-arg ...) extra-args])
-       #'(τ_ret (cast τ_fixed fixed-arg) ... extra-arg ...))]
+       #'(τ_ret (cast τ_fixed fixed-arg) ... (default-promote-argument extra-arg) ...))]
     [(~unspecified→ τ_ret)
-     (cons #'τ_ret (syntax->list #'(arg ...)))])
+     (cons #'τ_ret (syntax->list #'((default-promote-argument arg) ...)))])
   --------
   [⊢ (#%app- f- arg^ ...) ⇒ τ_ret])
+
+(define-typed-syntax (default-promote-argument v) ≫
+  [⊢ v ≫ v- ⇒ τ]
+  #:with τ^
+  (syntax-parse #'τ
+    [(~Array base len) #'(Pointer base)]
+    [_ #| TODO |# #'τ])
+  --------
+  [≻ (cast τ^ v)])
 
 (define-syntax-rule (|.| s member) (struct-reference s member))
 
