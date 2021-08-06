@@ -20,10 +20,10 @@
   (define proc (link/executable (list obj) (list libc)))
   (check-equal? (proc) expected))
 
-(define test-suite:ok
+(define-syntax-rule (make-tests path desc)
   (test-suite
-   "Compile and run unit tests (expected success)"
-   (for ([file (in-directory test-files:ok)]
+   desc
+   (for ([file (in-directory path)]
          #:when (regexp-match? #rx"\\.c$" file))
      (test-case
       (path->string file)
@@ -31,4 +31,4 @@
 
 (module+ test
   (require rackunit/text-ui)
-  (run-tests test-suite:ok))
+  (run-tests (make-tests test-files:ok "Compile and run unit tests (expected success)")))
