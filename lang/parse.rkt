@@ -58,8 +58,8 @@
   [(expr:ref src id) (*id id)]
   [(expr:int src value qualifiers) value] ; TODO: qualifiers
   [(expr:float src value qualifiers) value]
-  [(expr:char src source wide?) (string-ref source 0)] ; TODO: multi-char constants
-  [(expr:string src source wide?) source]
+  [(expr:char src source wide?) (string-ref (unescape source) 0)] ; TODO: multi-char constants
+  [(expr:string src source wide?) (unescape source)]
   ; TODO: compound
   [(expr:array-ref src expr offset) (quasisyntax/src (|[]| #,(*expr expr) #,(*expr offset)))]
   [(expr:call src function arguments) (quasisyntax/src (#%app #,(*expr function) #,@(map *expr arguments)))]
@@ -74,6 +74,26 @@
   [(expr:assign src left op right) (quasisyntax/src (#,(*id op) #,(*expr left) #,(*expr right)))]
   [(expr:begin src left right) (quasisyntax/src (|,| #,(*expr left) #,(*expr right)))]
   [(expr:if src test cons alt) (quasisyntax/src (?: #,(*expr test) #,(*expr cons) #,(*expr alt)))])
+
+(define (unescape str)
+  (regexp-replace*
+   #px"\\\\[0-7]{1,3}|\\\\x[0-9a-zA-Z]+|\\\\."
+   str
+   (λ (esc)
+     (define e (string-ref esc 1))
+     (string
+      (case e
+        [(#\a) #\007]
+        [(#\b) #\010]
+        [(#\f) #\014]
+        [(#\n) #\012]
+        [(#\r) #\015]
+        [(#\t) #\011]
+        [(#\v) #\013]
+        [(#\x) (integer->char (string->number (substring esc 2) 16))]
+        [else (if (char<=? #\0 e #\7)
+                  (integer->char (string->number (substring esc 2) 8))
+                  (string-ref esc 2))])))))
 
 ;; Statements
 

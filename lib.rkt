@@ -37,7 +37,7 @@
    (λ (stx modes)
      (syntax-case stx ()
        [(_ id ...)
-        (with-syntax* ([(int-id) (generate-temporaries #'(id ...))]
+        (with-syntax* ([(int-id ...) (generate-temporaries #'(id ...))]
                        [obj-id (syntax-local-lift-expression
                                 #'(c-object
                                    (extern [int-id id] ...)
