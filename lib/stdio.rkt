@@ -1,7 +1,7 @@
-#lang racket
+#lang racket/base
 
 (require "../lang/rep.rkt"
-         "../provide.rkt")
+         "../lib.rkt")
 
 (provide (c-out puts))
 
@@ -13,7 +13,7 @@
          '()
          (cons c (loop (pointer-inc p 1)))))))
 
-(define ;(→ (const (Pointer char)) int)
+(define/prototype (→ (const (Pointer char)) int)
   (puts s)
   (write-string (char*->string s))
   (newline)

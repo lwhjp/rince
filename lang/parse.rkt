@@ -17,15 +17,12 @@
 
 ; TODO: preprocessor directives (need to hack it until c-utils supports them)
 (define (c->racket in [source-name #f])
-  (*program (parse-program (preprocess in) #:source source-name)))
+  (define-values (cpp-out include-decls) (preprocess in))
+  #`(translation-unit
+     #,@include-decls
+     #,@(map *decl (parse-program cpp-out #:source source-name))))
 
 (when DEBUG (trace c->racket))
-
-(define *program
-  (match-lambda
-    [(list decls ...)
-     #`(translation-unit
-        #,@(map *decl decls))]))
 
 (define-syntax-parameter this-node #f)
 (define-syntax-parameter this-src #f)

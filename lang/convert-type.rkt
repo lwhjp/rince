@@ -51,6 +51,9 @@
 (define-for-syntax (make-conversion τ_old τ_new stx)
   (cond
     [(type=? τ_old τ_new) stx]
+    [(syntax-parse τ_new
+       [(~const τ_base) (make-conversion τ_old #'τ_base stx)]
+       [_ #f])]
     [(and (Pointer? τ_new) (Array? τ_old))
      ; XXX: cast element type
      #`(array->pointer #,stx)]

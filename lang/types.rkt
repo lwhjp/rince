@@ -22,6 +22,7 @@
            →
            unspecified→
            args...
+           const
            Pointer)
  (rename-out [Array* Array])
  (for-syntax Array?
@@ -318,6 +319,10 @@
   (syntax-parse τ
     [(~→ _ ... ret) #'ret]
     [(~unspecified→ ret) #'ret]))
+
+; Qualifiers
+
+(define-type-constructor const)
 
 ; Pointers
 
