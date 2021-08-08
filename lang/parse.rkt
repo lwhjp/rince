@@ -213,7 +213,10 @@
   [(type:primitive src name)
    (quasisyntax/src
     #,(match name
-        [(or 'char 'short 'int 'long) name]
+        ['char 'char]
+        ['short '|short int|]
+        ['int 'int]
+        ['long '|long int|]
         ['signed 'int]
         ['unsigned '|unsigned int|]
         [(list spec ... (or 'char 'int 'double '_Complex)) (string->symbol (string-join (map symbol->string name)))]
