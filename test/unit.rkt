@@ -7,6 +7,7 @@
          "../link.rkt")
 
 (define-runtime-path test-files:ok "ok")
+(define-runtime-path test-files:ugly "ugly")
 
 (define-simple-check (check-compile+run file)
   (define expected
@@ -31,4 +32,5 @@
 
 (module+ test
   (require rackunit/text-ui)
-  (run-tests (make-tests test-files:ok "Compile and run unit tests (expected success)")))
+  (run-tests (make-tests test-files:ok "Compile and run unit tests (expected success)"))
+  (run-tests (make-tests test-files:ugly "Don't write C like this")))
