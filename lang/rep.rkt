@@ -17,7 +17,9 @@
  struct-member-reference
  pointer-dereference
  pointer-inc
- pointer-diff)
+ pointer-diff
+ integer->raw/pointer
+ raw->integer/pointer)
 
 ;; Representation of C values in racket
 
@@ -96,7 +98,7 @@
   (pointer
    (λ (offset)
      (unless (zero? offset)
-       (error "illegal derefence of variable pointer with offset:" offset))
+       (error "illegal dereference of pointer to non-array with offset:" offset))
      (variable->lvalue v))
    0))
 
@@ -153,3 +155,38 @@
 
 (define (pointer-diff p q)
   (- (pointer-offset p) (pointer-offset q)))
+
+(define (FIXME-ro-lvalue v)
+  (make-lvalue
+   (λ () v)
+   (λ (v) (error "TODO: write through punned pointer"))
+   (λ () (error "TODO: address of punned pointer"))))
+
+(define (integer->raw/pointer p size signed?)
+  (pointer
+   (λ (offset)
+     (define-values (base-offset raw-offset)
+       (quotient/remainder offset size))
+     (FIXME-ro-lvalue
+      (bytes-ref
+       (integer->integer-bytes
+        ((lvalue-get-proc ((pointer-resolve-proc p) (+ (pointer-offset p) base-offset))))
+        size
+        signed?
+        #f)
+       raw-offset)))
+   0))
+
+(define (raw->integer/pointer p size signed?)
+  (pointer
+   (λ (offset)
+     (define base-offset (* offset size))
+     (FIXME-ro-lvalue
+      (integer-bytes->integer
+       (list->bytes
+        (for/list ([i (in-range size)])
+          ; FIXME: preserve lvalue (allow write)
+          ((lvalue-get-proc ((pointer-resolve-proc p) (+ (pointer-offset p) base-offset i))))))
+       signed?
+       #f)))
+   0))

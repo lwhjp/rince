@@ -17,6 +17,8 @@
  constrain-value
  decay-array)
 
+(define-for-syntax DEBUG #f)
+
 (define-for-syntax integer-conversion-ranks
   (list
    (list _Bool?)
@@ -49,15 +51,45 @@
     [else ((current-type-eval) #'|unsigned int|)]))
 
 (define-for-syntax (make-conversion τ_old τ_new stx)
-  (cond
-    [(type=? τ_old τ_new) stx]
-    [(syntax-parse τ_new
-       [(~const τ_base) (make-conversion τ_old #'τ_base stx)]
-       [_ #f])]
-    [(and (Pointer? τ_new) (Array? τ_old))
-     ; XXX: cast element type
-     #`(array->pointer #,stx)]
-    [else (make-conversion/basic τ_old τ_new stx)]))
+  (when DEBUG
+    (printf "convert ~a -> ~a\nexpr: ~a\n" (type->str τ_old) (type->str τ_new) stx))
+  (syntax-parse #`(#,((current-type-eval) τ_new)
+                   #,((current-type-eval) τ_old))
+    [(τ_new τ_old)
+     #:when (type=? #'τ_new #'τ_old)
+     (when DEBUG (displayln "same type"))
+     stx]
+    [(_ (~const base_old))
+     (when DEBUG (displayln "un-const old"))
+     (make-conversion #'base_old τ_new stx)]
+    [((~const base_new) _)
+     (when DEBUG (displayln "un-const new"))
+     (make-conversion τ_old #'base_new stx)]
+    [((~Pointer _) (~Array base_old _))
+     (when DEBUG (displayln "array->pointer"))
+     (make-conversion #'(Pointer base_old) τ_new #`(array->pointer #,stx))]
+    [((~Pointer ~char) (~Pointer base_old))
+     (when DEBUG (displayln "int->raw"))
+     ; TODO: handle non-integer types
+     #`(integer->raw/pointer #,stx #,(sizeof/type #'base_old) #,(signed-integer-type? #'base_old))]
+    [((~Pointer base_new) (~Pointer ~char))
+     (when DEBUG (displayln "raw->int"))
+     ; TODO: handle non-integer types
+     #`(raw->integer/pointer #,stx #,(sizeof/type #'base_new) #,(signed-integer-type? #'base_new))]
+    [((~Pointer _) (~Pointer _))
+     (when DEBUG (displayln "pun"))
+     ; TODO: handle non-integer types
+     (make-conversion #'(Pointer char) τ_new
+                      (make-conversion τ_old #'(Pointer char) stx))]
+    [_ #:when (and (basic-type? τ_old) (basic-type? τ_new))
+     (when DEBUG (displayln "basic"))
+     (make-conversion/basic τ_old τ_new stx)]
+    [_ (raise-syntax-error
+        #f
+        (format "unsupported type conversion: ~a -> ~a"
+                (type->str τ_old)
+                (type->str τ_new))
+        stx)]))
 
 (define-syntax constrain-value
   (syntax-parser
