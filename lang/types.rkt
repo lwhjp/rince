@@ -184,7 +184,7 @@
     [~_Bool 1]
     [(~or |~char| |~signed char| |~unsigned char| |~__int8| |~__uint8|) 8]
     [(~or |~short int| |~unsigned short int| |~__int16| |~__uint16|) 16]
-    [(~or |~__int32| |~__uint32|) 32]
+    [(~or |~int| |~unsigned int| |~__int32| |~__uint32|) 32]
     [_ 64]))
 
 (define-for-syntax (sizeof/basic-type τ)
