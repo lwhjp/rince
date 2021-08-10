@@ -40,3 +40,13 @@ END
 ```
 
 `(proc)` should return `4`, the length of `"test"`.
+
+##### Running a standalone C program
+
+Install this folder as a package:
+
+    raco pkg install -n rince .
+
+Now you can use `raco run-c` to compile and execute a standalone C program:
+
+    raco run-c tests/ok/puts.c
