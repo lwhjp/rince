@@ -81,7 +81,13 @@
 
 (define (preprocess in)
   ;; TODO: preprocess properly (including position)
-  (define src-lines (call-with-input-file in port->lines))
+  (define src-port
+    (cond
+      [(path? in) (open-input-file in)]
+      [(string? in) (open-input-string in)]
+      [else in]))
+  (define src-lines (port->lines src-port))
+  (close-input-port src-port)
   (define macros (make-hash))
   (define-values (out-lines include-decls)
     (for/fold ([out-lines '()]
