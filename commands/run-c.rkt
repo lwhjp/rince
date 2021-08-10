@@ -17,3 +17,5 @@
    (list libc)))
 
 (exit (go))
+
+(module test racket/base)
