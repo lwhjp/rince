@@ -16,4 +16,4 @@
    (list (compile (string->path source-file)))
    (list libc)))
 
-(go)
+(exit (go))
